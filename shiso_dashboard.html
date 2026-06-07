@@ -3,570 +3,776 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>宍粟市 人口ダッシュボード</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<title>宍粟市 人口推移ダッシュボード</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Oswald:wght@400;600&display=swap');
-
-  :root {
-    --bg: #0f1117;
-    --surface: #1a1d27;
-    --surface2: #22263a;
-    --border: #2e3450;
-    --text: #e8eaf0;
-    --text-dim: #8890a8;
-    --yamazaki: #4e9af1;
-    --ichimiya: #1dd9a0;
-    --haga: #f5a623;
-    --chigusa: #e05c8a;
-    --total: #a78bfa;
-    --danger: #f87171;
-  }
-
   * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Noto Sans JP', sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
-    min-height: 100vh;
-    padding: 24px;
-  }
+  body { font-family: 'Hiragino Sans', 'Yu Gothic', sans-serif; background: #f0f4f8; color: #1a2a3a; }
 
   header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 32px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, #1a3a5c 0%, #2a6496 100%);
+    color: white; padding: 20px 28px;
+    display: flex; align-items: center; justify-content: space-between;
   }
+  header h1 { font-size: 1.4rem; font-weight: 700; }
+  header .subtitle { font-size: 0.8rem; opacity: 0.8; margin-top: 4px; }
+  header .updated { font-size: 0.75rem; opacity: 0.7; text-align: right; }
 
-  header h1 {
-    font-family: 'Oswald', sans-serif;
-    font-size: 28px;
-    font-weight: 600;
-    letter-spacing: 2px;
-    color: #fff;
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  /* KPI cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .kpi-card {
+    background: white; border-radius: 10px; padding: 16px 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-left: 4px solid #2a6496;
   }
+  .kpi-card.yamazaki { border-color: #e67e22; }
+  .kpi-card.ichimiya { border-color: #27ae60; }
+  .kpi-card.haga { border-color: #8e44ad; }
+  .kpi-card.chigusa { border-color: #e74c3c; }
+  .kpi-label { font-size: 0.72rem; color: #666; margin-bottom: 4px; }
+  .kpi-value { font-size: 1.7rem; font-weight: 700; color: #1a2a3a; }
+  .kpi-value span { font-size: 0.9rem; }
+  .kpi-change { font-size: 0.75rem; margin-top: 4px; }
+  .kpi-change.down { color: #e74c3c; }
+  .kpi-change.up { color: #27ae60; }
 
-  header p {
-    font-size: 12px;
-    color: var(--text-dim);
-    margin-top: 4px;
+  /* Charts */
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  @media (max-width: 768px) { .chart-grid { grid-template-columns: 1fr; } }
+  .chart-card {
+    background: white; border-radius: 10px; padding: 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   }
+  .chart-card.full { grid-column: 1 / -1; }
+  .chart-title { font-size: 0.9rem; font-weight: 600; color: #2a6496; margin-bottom: 14px; }
 
-  .badge {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 14px;
-    font-size: 12px;
-    color: var(--text-dim);
-    text-align: right;
+  /* Table */
+  .table-card {
+    background: white; border-radius: 10px; padding: 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px;
   }
+  .table-title { font-size: 0.9rem; font-weight: 600; color: #2a6496; margin-bottom: 12px; }
+  .table-wrap { overflow-x: auto; max-height: 360px; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th { background: #2a6496; color: white; padding: 8px 10px; text-align: right; position: sticky; top: 0; white-space: nowrap; }
+  th:first-child { text-align: left; }
+  td { padding: 7px 10px; text-align: right; border-bottom: 1px solid #eef; }
+  td:first-child { text-align: left; font-weight: 500; }
+  tr:nth-child(even) td { background: #f8faff; }
+  tr:hover td { background: #e8f0fe; }
+  .num { font-feature-settings: "tnum"; }
 
-  .badge strong {
-    display: block;
-    color: var(--text);
-    font-size: 14px;
-  }
+  /* Aging */
+  .aging-bar { height: 14px; background: #eee; border-radius: 7px; overflow: hidden; margin-top: 6px; }
+  .aging-fill { height: 100%; border-radius: 7px; transition: width 0.5s; }
 
-  /* KPIカード */
-  .kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 12px;
-    margin-bottom: 24px;
-  }
+  /* Note */
+  .note { font-size: 0.72rem; color: #888; margin-top: 10px; line-height: 1.6; }
 
-  .kpi {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px;
-    position: relative;
-    overflow: hidden;
-  }
+  /* Tabs */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tab { padding: 5px 12px; border: 1px solid #2a6496; border-radius: 20px; font-size: 0.78rem; cursor: pointer; background: white; color: #2a6496; }
+  .tab.active { background: #2a6496; color: white; }
 
-  .kpi::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-  }
-
-  .kpi.total::before { background: var(--total); }
-  .kpi.yamazaki::before { background: var(--yamazaki); }
-  .kpi.ichimiya::before { background: var(--ichimiya); }
-  .kpi.haga::before { background: var(--haga); }
-  .kpi.chigusa::before { background: var(--chigusa); }
-
-  .kpi-label { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
-  .kpi-value { font-family: 'Oswald', sans-serif; font-size: 26px; font-weight: 600; color: #fff; }
-  .kpi-sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
-  .kpi-sub span { color: var(--danger); font-weight: 700; }
-
-  /* セクション */
-  .section-title {
-    font-size: 11px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    margin-bottom: 12px;
-    padding-left: 10px;
-    border-left: 3px solid var(--total);
-  }
-
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px;
-  }
-
-  .chart-wrap { position: relative; height: 240px; }
-  .chart-wrap-lg { position: relative; height: 300px; }
-  .chart-wrap-xl { position: relative; height: 340px; }
-
-  .card h3 {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text);
-    margin-bottom: 16px;
-  }
-
-  /* 男女比バー */
-  .gender-bar-wrap { margin-top: 12px; }
-  .gender-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
-  .gender-bar-label { width: 56px; color: var(--text-dim); flex-shrink: 0; }
-  .gender-bar { flex: 1; height: 18px; border-radius: 3px; display: flex; overflow: hidden; }
-  .gender-bar .male { background: var(--yamazaki); opacity: 0.85; }
-  .gender-bar .female { background: var(--chigusa); opacity: 0.85; }
-  .gender-bar-nums { width: 100px; text-align: right; color: var(--text-dim); flex-shrink: 0; font-size: 11px; }
-
-  /* 凡例 */
-  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; font-size: 12px; }
-  .legend-item { display: flex; align-items: center; gap: 5px; color: var(--text-dim); }
-  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
-
-  /* 高齢化率テーブル */
-  .aging-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .aging-table th { color: var(--text-dim); font-weight: 400; text-align: left; padding: 6px 8px; font-size: 11px; border-bottom: 1px solid var(--border); }
-  .aging-table td { padding: 10px 8px; border-bottom: 1px solid var(--border); }
-  .aging-table tr:last-child td { border-bottom: none; }
-
-  .bar-cell { display: flex; align-items: center; gap: 8px; }
-  .bar-mini { height: 8px; border-radius: 4px; min-width: 4px; }
-
-  .note { font-size: 11px; color: var(--text-dim); margin-top: 12px; }
-
-  footer {
-    margin-top: 32px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border);
-    font-size: 11px;
-    color: var(--text-dim);
-  }
+  /* Chart controls */
+  .chart-controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .view-toggle { display: flex; gap: 4px; }
+  .toggle-btn { padding: 5px 16px; border: 1px solid #2a6496; border-radius: 20px; font-size: 0.78rem; cursor: pointer; background: white; color: #2a6496; }
+  .toggle-btn.active { background: #2a6496; color: white; }
+  .range-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 0.82rem; color: #555; flex-wrap: wrap; }
+  .range-controls select { padding: 4px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.82rem; cursor: pointer; }
 </style>
 </head>
 <body>
 
 <header>
   <div>
-    <h1>宍粟市 人口ダッシュボード</h1>
-    <p>住民基本台帳データに基づく人口・高齢化分析（令和8年5月31日現在）</p>
+    <h1>🏙 宍粟市 人口推移ダッシュボード</h1>
+    <div class="subtitle">住民基本台帳データに基づく人口分析</div>
   </div>
-  <div class="badge">
-    基準日<strong>2026年5月31日</strong>
-  </div>
+  <div class="updated">基準日：令和8年5月31日<br>データ期間：平成23年4月〜令和8年5月</div>
 </header>
 
-<!-- KPIカード -->
-<div class="kpi-grid">
-  <div class="kpi total">
-    <div class="kpi-label">宍粟市 総人口</div>
-    <div class="kpi-value">32,613</div>
-    <div class="kpi-sub">世帯数 14,516</div>
-  </div>
-  <div class="kpi yamazaki">
-    <div class="kpi-label">山崎町</div>
-    <div class="kpi-value">20,869</div>
-    <div class="kpi-sub">64.0% ／ 9,337世帯</div>
-  </div>
-  <div class="kpi ichimiya">
-    <div class="kpi-label">一宮町</div>
-    <div class="kpi-value">6,676</div>
-    <div class="kpi-sub">20.5% ／ 2,835世帯</div>
-  </div>
-  <div class="kpi haga">
-    <div class="kpi-label">波賀町</div>
-    <div class="kpi-value">2,819</div>
-    <div class="kpi-sub">8.6% ／ 1,295世帯</div>
-  </div>
-  <div class="kpi chigusa">
-    <div class="kpi-label">千種町</div>
-    <div class="kpi-value">2,249</div>
-    <div class="kpi-sub">6.9% ／ 1,049世帯</div>
-  </div>
-</div>
+<div class="container">
 
-<!-- 町別構成 + 男女比 -->
-<div class="grid-2">
-  <div class="card">
-    <h3>町別人口構成</h3>
-    <div class="chart-wrap">
-      <canvas id="townPie"></canvas>
-    </div>
-  </div>
-  <div class="card">
-    <h3>町別 男女比較</h3>
-    <div class="gender-bar-wrap" style="margin-top:20px;">
-      <div class="gender-bar-row">
-        <div class="gender-bar-label">山崎町</div>
-        <div class="gender-bar">
-          <div class="male" style="width:48.3%"></div>
-          <div class="female" style="width:51.7%"></div>
-        </div>
-        <div class="gender-bar-nums">男10,081 女10,788</div>
-      </div>
-      <div class="gender-bar-row">
-        <div class="gender-bar-label">一宮町</div>
-        <div class="gender-bar">
-          <div class="male" style="width:48.2%"></div>
-          <div class="female" style="width:51.8%"></div>
-        </div>
-        <div class="gender-bar-nums">男3,215 女3,461</div>
-      </div>
-      <div class="gender-bar-row">
-        <div class="gender-bar-label">波賀町</div>
-        <div class="gender-bar">
-          <div class="male" style="width:47.5%"></div>
-          <div class="female" style="width:52.5%"></div>
-        </div>
-        <div class="gender-bar-nums">男1,338 女1,481</div>
-      </div>
-      <div class="gender-bar-row">
-        <div class="gender-bar-label">千種町</div>
-        <div class="gender-bar">
-          <div class="male" style="width:47.2%"></div>
-          <div class="female" style="width:52.8%"></div>
-        </div>
-        <div class="gender-bar-nums">男1,062 女1,187</div>
-      </div>
-      <div class="gender-bar-row" style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
-        <div class="gender-bar-label" style="color:var(--text); font-weight:500;">宍粟市計</div>
-        <div class="gender-bar">
-          <div class="male" style="width:48.1%"></div>
-          <div class="female" style="width:51.9%"></div>
-        </div>
-        <div class="gender-bar-nums">男15,696 女16,917</div>
-      </div>
-      <div class="note" style="margin-top:16px;">
-        <span style="display:inline-block;width:10px;height:10px;background:var(--yamazaki);border-radius:2px;margin-right:4px;"></span>男性
-        <span style="display:inline-block;width:10px;height:10px;background:var(--chigusa);border-radius:2px;margin-left:12px;margin-right:4px;"></span>女性
-        ／ すべての町で女性が男性を上回る
-      </div>
-    </div>
-  </div>
-</div>
+  <!-- KPI Cards -->
+  <div class="kpi-grid" id="kpiGrid"></div>
 
-<!-- 年齢ピラミッド + 高齢化率 -->
-<p class="section-title">年齢構造・高齢化分析</p>
-<div class="grid-2" style="margin-bottom:24px;">
-  <div class="card">
-    <h3>宍粟市 年齢ピラミッド（5歳階級）</h3>
-    <div class="chart-wrap-xl">
-      <canvas id="pyramid"></canvas>
+  <!-- Charts Row 1: Trend (full width) -->
+  <div class="chart-grid">
+    <div class="chart-card full">
+      <div class="chart-title">📈 人口推移</div>
+      <div class="chart-controls">
+        <div class="tabs" id="trendTabs">
+          <button class="tab active" onclick="showTrend('all')">全体</button>
+          <button class="tab" onclick="showTrend('yamazaki')">山崎町</button>
+          <button class="tab" onclick="showTrend('ichimiya')">一宮町</button>
+          <button class="tab" onclick="showTrend('haga')">波賀町</button>
+          <button class="tab" onclick="showTrend('chigusa')">千種町</button>
+        </div>
+        <div class="view-toggle">
+          <button class="toggle-btn active" id="btnMonthly" onclick="setViewMode('monthly')">月次</button>
+          <button class="toggle-btn" id="btnYearly" onclick="setViewMode('yearly')">年次</button>
+        </div>
+      </div>
+      <div class="range-controls">
+        <label>表示期間：</label>
+        <select id="rangeFrom" onchange="updateRange()"></select>
+        <span>〜</span>
+        <select id="rangeTo" onchange="updateRange()"></select>
+        <span id="rangeInfo" style="color:#888; font-size:0.75rem;"></span>
+      </div>
+      <canvas id="trendChart" height="90"></canvas>
     </div>
-    <p class="note">※ 左：男性 / 右：女性。中心から外側に向かって人数が増える。</p>
   </div>
-  <div class="card">
-    <h3>町別 高齢化率（65歳以上の割合）</h3>
-    <br>
-    <table class="aging-table">
-      <thead>
-        <tr>
-          <th>町</th>
-          <th>65歳以上</th>
-          <th>高齢化率</th>
-          <th>全国比較</th>
-        </tr>
-      </thead>
-      <tbody id="aging-tbody"></tbody>
-    </table>
-    <p class="note" style="margin-top:16px;">※ 全国平均（2024年）約29.3%、兵庫県約28.1%</p>
-    <br>
-    <h3>町別 年少人口（0〜14歳）割合</h3>
-    <div class="chart-wrap" style="height:180px; margin-top:12px;">
-      <canvas id="youngBar"></canvas>
-    </div>
-    <p class="note">※ 全国平均（2024年）約11.4%</p>
-  </div>
-</div>
 
-<!-- 5歳階級 町別比較 -->
-<p class="section-title">町別 年齢階級別人口比較</p>
-<div class="card" style="margin-bottom:24px;">
-  <h3>5歳階級別人口 — 4町比較（男女計）</h3>
-  <div class="legend">
-    <div class="legend-item"><div class="legend-dot" style="background:var(--yamazaki)"></div>山崎町</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--ichimiya)"></div>一宮町</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--haga)"></div>波賀町</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--chigusa)"></div>千種町</div>
-  </div>
-  <div class="chart-wrap-xl">
-    <canvas id="townAge"></canvas>
-  </div>
-</div>
-
-<!-- 若年女性 特別分析 -->
-<p class="section-title">政策分析：若年女性の状況</p>
-<div class="grid-2">
-  <div class="card">
-    <h3>20〜39歳 女性人口（町別）— 政策上重要な世代</h3>
-    <div class="chart-wrap">
-      <canvas id="youngWomen"></canvas>
+  <!-- Charts Row 2: Aging + Town share -->
+  <div class="chart-grid">
+    <div class="chart-card">
+      <div class="chart-title">👴 町別 高齢化率・年少人口比率（令和8年5月）</div>
+      <canvas id="agingChart" height="200"></canvas>
+      <p class="note">全国平均（2024年）：65歳以上 約29.3%　0〜14歳 約11.4%</p>
     </div>
-    <p class="note">この世代の定住・転入が出生数・人口回復の鍵。正規雇用機会の創出が直結する。</p>
-  </div>
-  <div class="card">
-    <h3>宍粟市 世代別 男女差（女性－男性）</h3>
-    <div class="chart-wrap">
-      <canvas id="genderDiff"></canvas>
+    <div class="chart-card">
+      <div class="chart-title">🏘 町別 人口構成比（令和8年5月）</div>
+      <canvas id="pieChart" height="200"></canvas>
     </div>
-    <p class="note">プラス＝女性が多い、マイナス＝男性が多い。20〜40代で男性が多い傾向は女性流出を示す可能性。</p>
   </div>
-</div>
 
-<footer>
-  データ出典：宍粟市 住民基本台帳（令和8年5月31日現在）／ 年齢別人口・行政区別人口データ<br>
-  ※ このダッシュボードは議員活動の調査・政策立案支援を目的として作成。転出入・出生死亡の詳細はe-Stat等の追加データで補完予定。
-</footer>
+  <!-- Charts Row 3: Vital Statistics -->
+  <div class="chart-grid">
+    <div class="chart-card">
+      <div class="chart-title">👶 出生数・死亡数・自然増減</div>
+      <canvas id="vitalChart" height="200"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">💍 婚姻・離婚件数</div>
+      <canvas id="marriageChart" height="200"></canvas>
+      <p class="note">出典：厚生労働省 人口動態調査（e-Stat）年次確定値（2015〜2024年）</p>
+    </div>
+  </div>
+
+  <!-- Monthly Data Table -->
+  <div class="table-card">
+    <div class="table-title">📋 月次データ一覧（新しい順）</div>
+    <div class="table-wrap">
+      <table id="dataTable"></table>
+    </div>
+    <p class="note">※ データ出典：宍粟市 住民基本台帳（月末時点）<br>
+    ※ 更新方法：このHTMLファイルをテキストエディタで開き、下部の「DATA」セクションに最新月のデータを1行追加してください。</p>
+  </div>
+
+</div>
 
 <script>
-// ===== データ =====
-const AGES = ['0-4','5-9','10-14','15-19','20-24','25-29','30-34','35-39','40-44','45-49','50-54','55-59','60-64','65-69','70-74','75-79','80-84','85-89','90-94','95-99','100+'];
-
-// 宍粟市全体（男・女）1歳刻み→5歳階級集計
-const cityMale   = [354,505,746,767,639,545,571,698,939,1055,1217,1062,1060,1239,1403,1455,704,420,249,65,3];
-const cityFemale = [347,493,638,745,595,500,490,712,831,947,1182,1092,1129,1346,1471,1665,1012,887,573,220,42];
-
-// 4町 男女計 5歳階級
-const yamazakiData = [534,704,980,1071,862,740,740,964,1237,1394,1647,1386,1242,1456,1700,1912,989,719,422,147,23];
-const ichimiyaData = [112,163,261,282,213,168,191,280,312,387,423,439,522,639,634,675,406,299,200,62,8];
-const hagaData     = [33,71,74,102,108,82,72,82,124,130,192,188,242,236,279,301,184,163,110,40,6];
-const chigusaData  = [22,60,69,57,51,55,58,84,97,91,137,141,183,254,261,232,137,126,90,36,8];
-
-// 高齢化分析（65歳以上インデックス13以降）
-function elderlySum(arr) { return arr.slice(13).reduce((a,b)=>a+b,0); }
-function totalSum(arr)   { return arr.reduce((a,b)=>a+b,0); }
-function youthSum(arr)   { return arr.slice(0,3).reduce((a,b)=>a+b,0); }
-
-const towns = [
-  { name:'山崎町', data:yamazakiData, color:'#4e9af1', colorFade:'rgba(78,154,241,0.15)' },
-  { name:'一宮町', data:ichimiyaData, color:'#1dd9a0', colorFade:'rgba(29,217,160,0.15)' },
-  { name:'波賀町', data:hagaData,     color:'#f5a623', colorFade:'rgba(245,166,35,0.15)' },
-  { name:'千種町', data:chigusaData,  color:'#e05c8a', colorFade:'rgba(224,92,138,0.15)' },
+// ============================================================
+//  DATA セクション — 毎月ここに1行追加してください
+//  形式: { date:"YYYY-MM", total:数値, yamazaki:数値, ichimiya:数値, haga:数値, chigusa:数値 }
+//  日付は月末基準の年月 (例: 令和8年6月末 → "2026-06")
+// ============================================================
+const MONTHLY_DATA = [
+  // H23年度 (2011-04〜2012-03)
+  { date:"2011-04", total:42641, yamazaki:25296, ichimiya:9554, haga:4298, chigusa:3493 },
+  { date:"2011-05", total:42611, yamazaki:25300, ichimiya:9530, haga:4290, chigusa:3491 },
+  { date:"2011-06", total:42592, yamazaki:25295, ichimiya:9525, haga:4281, chigusa:3491 },
+  { date:"2011-07", total:42572, yamazaki:25295, ichimiya:9520, haga:4279, chigusa:3478 },
+  { date:"2011-08", total:42527, yamazaki:25257, ichimiya:9519, haga:4281, chigusa:3470 },
+  { date:"2011-09", total:42505, yamazaki:25248, ichimiya:9513, haga:4276, chigusa:3468 },
+  { date:"2011-10", total:42486, yamazaki:25251, ichimiya:9505, haga:4268, chigusa:3462 },
+  { date:"2011-11", total:42446, yamazaki:25235, ichimiya:9487, haga:4264, chigusa:3460 },
+  { date:"2011-12", total:42407, yamazaki:25219, ichimiya:9476, haga:4262, chigusa:3450 },
+  { date:"2012-01", total:42362, yamazaki:25196, ichimiya:9463, haga:4257, chigusa:3446 },
+  { date:"2012-02", total:42312, yamazaki:25168, ichimiya:9452, haga:4248, chigusa:3444 },
+  { date:"2012-03", total:42166, yamazaki:25094, ichimiya:9418, haga:4231, chigusa:3423 },
+  // H24年度 (2012-04〜2013-03)
+  { date:"2012-04", total:42133, yamazaki:25097, ichimiya:9410, haga:4212, chigusa:3414 },
+  { date:"2012-05", total:42102, yamazaki:25071, ichimiya:9400, haga:4216, chigusa:3415 },
+  { date:"2012-06", total:42060, yamazaki:25064, ichimiya:9366, haga:4213, chigusa:3417 },
+  { date:"2012-07", total:42252, yamazaki:25197, ichimiya:9405, haga:4233, chigusa:3417 },
+  { date:"2012-08", total:42197, yamazaki:25167, ichimiya:9387, haga:4225, chigusa:3418 },
+  { date:"2012-09", total:42148, yamazaki:25134, ichimiya:9385, haga:4217, chigusa:3412 },
+  { date:"2012-10", total:42105, yamazaki:25106, ichimiya:9386, haga:4205, chigusa:3408 },
+  { date:"2012-11", total:42062, yamazaki:25072, ichimiya:9382, haga:4204, chigusa:3404 },
+  { date:"2012-12", total:42043, yamazaki:25078, ichimiya:9369, haga:4202, chigusa:3394 },
+  { date:"2013-01", total:42006, yamazaki:25060, ichimiya:9351, haga:4211, chigusa:3384 },
+  { date:"2013-02", total:41949, yamazaki:25038, ichimiya:9338, haga:4196, chigusa:3377 },
+  { date:"2013-03", total:41756, yamazaki:24954, ichimiya:9266, haga:4178, chigusa:3358 },
+  // H25年度 (2013-04〜2014-03)
+  { date:"2013-04", total:41733, yamazaki:24957, ichimiya:9263, haga:4171, chigusa:3342 },
+  { date:"2013-05", total:41704, yamazaki:24958, ichimiya:9256, haga:4154, chigusa:3336 },
+  { date:"2013-06", total:41678, yamazaki:24945, ichimiya:9248, haga:4148, chigusa:3337 },
+  { date:"2013-07", total:41635, yamazaki:24938, ichimiya:9233, haga:4132, chigusa:3332 },
+  { date:"2013-08", total:41590, yamazaki:24906, ichimiya:9230, haga:4129, chigusa:3325 },
+  { date:"2013-09", total:41556, yamazaki:24915, ichimiya:9194, haga:4131, chigusa:3316 },
+  { date:"2013-10", total:41498, yamazaki:24890, ichimiya:9180, haga:4121, chigusa:3307 },
+  { date:"2013-11", total:41450, yamazaki:24868, ichimiya:9159, haga:4124, chigusa:3299 },
+  { date:"2013-12", total:41438, yamazaki:24886, ichimiya:9147, haga:4115, chigusa:3290 },
+  { date:"2014-01", total:41379, yamazaki:24850, ichimiya:9146, haga:4100, chigusa:3283 },
+  { date:"2014-02", total:41293, yamazaki:24795, ichimiya:9125, haga:4097, chigusa:3276 },
+  { date:"2014-03", total:41122, yamazaki:24733, ichimiya:9077, haga:4063, chigusa:3249 },
+  // H26年度 (2014-04〜2015-03)
+  { date:"2014-04", total:41045, yamazaki:24697, ichimiya:9040, haga:4063, chigusa:3245 },
+  { date:"2014-05", total:41000, yamazaki:24684, ichimiya:9008, haga:4067, chigusa:3241 },
+  { date:"2014-06", total:40993, yamazaki:24668, ichimiya:9015, haga:4077, chigusa:3233 },
+  { date:"2014-07", total:40947, yamazaki:24660, ichimiya:9013, haga:4061, chigusa:3213 },
+  { date:"2014-08", total:40904, yamazaki:24634, ichimiya:8985, haga:4057, chigusa:3228 },
+  { date:"2014-09", total:40856, yamazaki:24615, ichimiya:8965, haga:4052, chigusa:3224 },
+  { date:"2014-10", total:40815, yamazaki:24596, ichimiya:8952, haga:4045, chigusa:3222 },
+  { date:"2014-11", total:40762, yamazaki:24582, ichimiya:8916, haga:4043, chigusa:3221 },
+  { date:"2014-12", total:40743, yamazaki:24569, ichimiya:8918, haga:4040, chigusa:3216 },
+  { date:"2015-01", total:40702, yamazaki:24564, ichimiya:8907, haga:4021, chigusa:3210 },
+  { date:"2015-02", total:40616, yamazaki:24526, ichimiya:8892, haga:4003, chigusa:3195 },
+  { date:"2015-03", total:40473, yamazaki:24482, ichimiya:8839, haga:3974, chigusa:3178 },
+  // H27年度 (2015-04〜2016-03)
+  { date:"2015-04", total:40444, yamazaki:24500, ichimiya:8804, haga:3966, chigusa:3174 },
+  { date:"2015-05", total:40392, yamazaki:24488, ichimiya:8780, haga:3957, chigusa:3167 },
+  { date:"2015-06", total:40357, yamazaki:24451, ichimiya:8779, haga:3963, chigusa:3164 },
+  { date:"2015-07", total:40318, yamazaki:24424, ichimiya:8779, haga:3952, chigusa:3163 },
+  { date:"2015-08", total:40287, yamazaki:24429, ichimiya:8766, haga:3941, chigusa:3151 },
+  { date:"2015-09", total:40213, yamazaki:24404, ichimiya:8738, haga:3931, chigusa:3140 },
+  { date:"2015-10", total:40168, yamazaki:24391, ichimiya:8734, haga:3923, chigusa:3120 },
+  { date:"2015-11", total:40115, yamazaki:24372, ichimiya:8722, haga:3908, chigusa:3113 },
+  { date:"2015-12", total:40056, yamazaki:24345, ichimiya:8709, haga:3897, chigusa:3105 },
+  { date:"2016-01", total:39993, yamazaki:24341, ichimiya:8682, haga:3878, chigusa:3092 },
+  { date:"2016-02", total:39912, yamazaki:24296, ichimiya:8655, haga:3883, chigusa:3078 },
+  { date:"2016-03", total:39717, yamazaki:24182, ichimiya:8624, haga:3854, chigusa:3057 },
+  // H28年度 (2016-04〜2017-03)
+  { date:"2016-04", total:39666, yamazaki:24160, ichimiya:8617, haga:3845, chigusa:3044 },
+  { date:"2016-05", total:39627, yamazaki:24147, ichimiya:8608, haga:3835, chigusa:3037 },
+  { date:"2016-06", total:39608, yamazaki:24144, ichimiya:8600, haga:3828, chigusa:3036 },
+  { date:"2016-07", total:39575, yamazaki:24146, ichimiya:8591, haga:3811, chigusa:3027 },
+  { date:"2016-08", total:39521, yamazaki:24123, ichimiya:8575, haga:3805, chigusa:3018 },
+  { date:"2016-09", total:39470, yamazaki:24103, ichimiya:8562, haga:3796, chigusa:3009 },
+  { date:"2016-10", total:39440, yamazaki:24083, ichimiya:8547, haga:3801, chigusa:3009 },
+  { date:"2016-11", total:39379, yamazaki:24082, ichimiya:8521, haga:3783, chigusa:2993 },
+  { date:"2016-12", total:39347, yamazaki:24064, ichimiya:8505, haga:3789, chigusa:2989 },
+  { date:"2017-01", total:39273, yamazaki:24047, ichimiya:8474, haga:3771, chigusa:2981 },
+  { date:"2017-02", total:39281, yamazaki:24041, ichimiya:8476, haga:3774, chigusa:2990 },
+  { date:"2017-03", total:39050, yamazaki:23902, ichimiya:8426, haga:3744, chigusa:2978 },
+  // H29年度 (2017-04〜2018-03)
+  { date:"2017-04", total:39008, yamazaki:23908, ichimiya:8395, haga:3730, chigusa:2975 },
+  { date:"2017-05", total:38959, yamazaki:23899, ichimiya:8363, haga:3728, chigusa:2969 },
+  { date:"2017-06", total:38899, yamazaki:23868, ichimiya:8352, haga:3714, chigusa:2965 },
+  { date:"2017-07", total:38865, yamazaki:23851, ichimiya:8334, haga:3716, chigusa:2964 },
+  { date:"2017-08", total:38862, yamazaki:23866, ichimiya:8322, haga:3718, chigusa:2956 },
+  { date:"2017-09", total:38827, yamazaki:23842, ichimiya:8317, haga:3719, chigusa:2949 },
+  { date:"2017-10", total:38778, yamazaki:23828, ichimiya:8291, haga:3710, chigusa:2949 },
+  { date:"2017-11", total:38722, yamazaki:23817, ichimiya:8259, haga:3705, chigusa:2941 },
+  { date:"2017-12", total:38666, yamazaki:23779, ichimiya:8255, haga:3693, chigusa:2939 },
+  { date:"2018-01", total:38566, yamazaki:23732, ichimiya:8216, haga:3686, chigusa:2932 },
+  { date:"2018-02", total:38488, yamazaki:23696, ichimiya:8187, haga:3671, chigusa:2934 },
+  { date:"2018-03", total:38316, yamazaki:23607, ichimiya:8161, haga:3634, chigusa:2914 },
+  // H30年度 (2018-04〜2019-03)
+  { date:"2018-04", total:38273, yamazaki:23591, ichimiya:8150, haga:3626, chigusa:2906 },
+  { date:"2018-05", total:38230, yamazaki:23573, ichimiya:8141, haga:3616, chigusa:2900 },
+  { date:"2018-06", total:38212, yamazaki:23556, ichimiya:8139, haga:3620, chigusa:2897 },
+  { date:"2018-07", total:38188, yamazaki:23548, ichimiya:8136, haga:3611, chigusa:2893 },
+  { date:"2018-08", total:38159, yamazaki:23540, ichimiya:8111, haga:3611, chigusa:2897 },
+  { date:"2018-09", total:38138, yamazaki:23537, ichimiya:8102, haga:3610, chigusa:2889 },
+  { date:"2018-10", total:38100, yamazaki:23507, ichimiya:8099, haga:3607, chigusa:2887 },
+  { date:"2018-11", total:38071, yamazaki:23495, ichimiya:8096, haga:3604, chigusa:2876 },
+  { date:"2018-12", total:38012, yamazaki:23463, ichimiya:8088, haga:3594, chigusa:2867 },
+  { date:"2019-01", total:37948, yamazaki:23442, ichimiya:8064, haga:3582, chigusa:2860 },
+  { date:"2019-02", total:37886, yamazaki:23417, ichimiya:8054, haga:3566, chigusa:2849 },
+  { date:"2019-03", total:37709, yamazaki:23302, ichimiya:8009, haga:3561, chigusa:2837 },
+  // R1年度 (2019-04〜2020-03)
+  { date:"2019-04", total:37652, yamazaki:23282, ichimiya:7994, haga:3553, chigusa:2823 },
+  { date:"2019-05", total:37623, yamazaki:23278, ichimiya:7983, haga:3546, chigusa:2816 },
+  { date:"2019-06", total:37602, yamazaki:23273, ichimiya:7973, haga:3543, chigusa:2813 },
+  { date:"2019-07", total:37537, yamazaki:23241, ichimiya:7964, haga:3530, chigusa:2802 },
+  { date:"2019-08", total:37480, yamazaki:23209, ichimiya:7949, haga:3525, chigusa:2797 },
+  { date:"2019-09", total:37442, yamazaki:23192, ichimiya:7933, haga:3520, chigusa:2797 },
+  { date:"2019-10", total:37414, yamazaki:23184, ichimiya:7923, haga:3516, chigusa:2791 },
+  { date:"2019-11", total:37378, yamazaki:23181, ichimiya:7899, haga:3512, chigusa:2786 },
+  { date:"2019-12", total:37329, yamazaki:23174, ichimiya:7876, haga:3498, chigusa:2781 },
+  { date:"2020-01", total:37260, yamazaki:23130, ichimiya:7866, haga:3488, chigusa:2776 },
+  { date:"2020-02", total:37208, yamazaki:23096, ichimiya:7857, haga:3484, chigusa:2771 },
+  { date:"2020-03", total:37086, yamazaki:23034, ichimiya:7834, haga:3467, chigusa:2751 },
+  // R2年度 (2020-04〜2021-03)
+  { date:"2020-04", total:37061, yamazaki:23016, ichimiya:7840, haga:3463, chigusa:2742 },
+  { date:"2020-05", total:37007, yamazaki:22989, ichimiya:7829, haga:3453, chigusa:2736 },
+  { date:"2020-06", total:36951, yamazaki:22962, ichimiya:7815, haga:3442, chigusa:2732 },
+  { date:"2020-07", total:36919, yamazaki:22953, ichimiya:7802, haga:3435, chigusa:2729 },
+  { date:"2020-08", total:36868, yamazaki:22931, ichimiya:7790, haga:3423, chigusa:2724 },
+  { date:"2020-09", total:36804, yamazaki:22911, ichimiya:7766, haga:3413, chigusa:2714 },
+  { date:"2020-10", total:36758, yamazaki:22891, ichimiya:7757, haga:3407, chigusa:2703 },
+  { date:"2020-11", total:36725, yamazaki:22881, ichimiya:7739, haga:3403, chigusa:2702 },
+  { date:"2020-12", total:36678, yamazaki:22841, ichimiya:7737, haga:3393, chigusa:2707 },
+  { date:"2021-01", total:36603, yamazaki:22805, ichimiya:7711, haga:3386, chigusa:2701 },
+  { date:"2021-02", total:36556, yamazaki:22780, ichimiya:7693, haga:3386, chigusa:2697 },
+  { date:"2021-03", total:36360, yamazaki:22688, ichimiya:7645, haga:3346, chigusa:2681 },
+  // R3年度 (2021-04〜2022-03)
+  { date:"2021-04", total:36315, yamazaki:22648, ichimiya:7635, haga:3346, chigusa:2686 },
+  { date:"2021-05", total:36262, yamazaki:22622, ichimiya:7619, haga:3336, chigusa:2685 },
+  { date:"2021-06", total:36216, yamazaki:22600, ichimiya:7602, haga:3330, chigusa:2684 },
+  { date:"2021-07", total:36213, yamazaki:22615, ichimiya:7581, haga:3334, chigusa:2683 },
+  { date:"2021-08", total:36162, yamazaki:22607, ichimiya:7554, haga:3330, chigusa:2671 },
+  { date:"2021-09", total:36135, yamazaki:22590, ichimiya:7544, haga:3328, chigusa:2673 },
+  { date:"2021-10", total:36084, yamazaki:22560, ichimiya:7536, haga:3323, chigusa:2665 },
+  { date:"2021-11", total:36062, yamazaki:22557, ichimiya:7524, haga:3319, chigusa:2662 },
+  { date:"2021-12", total:36008, yamazaki:22527, ichimiya:7516, haga:3310, chigusa:2655 },
+  { date:"2022-01", total:35935, yamazaki:22497, ichimiya:7483, haga:3304, chigusa:2651 },
+  { date:"2022-02", total:35861, yamazaki:22456, ichimiya:7468, haga:3294, chigusa:2643 },
+  { date:"2022-03", total:35667, yamazaki:22364, ichimiya:7416, haga:3265, chigusa:2622 },
+  // R4年度 (2022-04〜2023-03)
+  { date:"2022-04", total:35639, yamazaki:22412, ichimiya:7407, haga:3201, chigusa:2619 },
+  { date:"2022-05", total:35617, yamazaki:22404, ichimiya:7406, haga:3195, chigusa:2612 },
+  { date:"2022-06", total:35585, yamazaki:22377, ichimiya:7406, haga:3193, chigusa:2609 },
+  { date:"2022-07", total:35556, yamazaki:22358, ichimiya:7403, haga:3190, chigusa:2605 },
+  { date:"2022-08", total:35483, yamazaki:22309, ichimiya:7396, haga:3182, chigusa:2596 },
+  { date:"2022-09", total:35442, yamazaki:22298, ichimiya:7374, haga:3180, chigusa:2590 },
+  { date:"2022-10", total:35396, yamazaki:22273, ichimiya:7361, haga:3171, chigusa:2591 },
+  { date:"2022-11", total:35349, yamazaki:22251, ichimiya:7352, haga:3167, chigusa:2579 },
+  { date:"2022-12", total:35307, yamazaki:22222, ichimiya:7358, haga:3156, chigusa:2571 },
+  { date:"2023-01", total:35208, yamazaki:22180, ichimiya:7317, haga:3148, chigusa:2563 },
+  { date:"2023-02", total:35132, yamazaki:22148, ichimiya:7296, haga:3137, chigusa:2551 },
+  { date:"2023-03", total:34981, yamazaki:22059, ichimiya:7262, haga:3122, chigusa:2538 },
+  // R5年度 (2023-04〜2024-03)
+  { date:"2023-04", total:34889, yamazaki:22019, ichimiya:7234, haga:3119, chigusa:2517 },
+  { date:"2023-05", total:34832, yamazaki:21987, ichimiya:7228, haga:3105, chigusa:2512 },
+  { date:"2023-06", total:34793, yamazaki:21976, ichimiya:7205, haga:3099, chigusa:2513 },
+  { date:"2023-07", total:34730, yamazaki:21944, ichimiya:7189, haga:3089, chigusa:2508 },
+  { date:"2023-08", total:34683, yamazaki:21912, ichimiya:7179, haga:3088, chigusa:2504 },
+  { date:"2023-09", total:34667, yamazaki:21916, ichimiya:7169, haga:3081, chigusa:2501 },
+  { date:"2023-10", total:34639, yamazaki:21914, ichimiya:7153, haga:3075, chigusa:2497 },
+  { date:"2023-11", total:34603, yamazaki:21889, ichimiya:7153, haga:3070, chigusa:2491 },
+  { date:"2023-12", total:34570, yamazaki:21869, ichimiya:7148, haga:3063, chigusa:2490 },
+  { date:"2024-01", total:34517, yamazaki:21854, ichimiya:7128, haga:3058, chigusa:2477 },
+  { date:"2024-02", total:34473, yamazaki:21845, ichimiya:7113, haga:3050, chigusa:2465 },
+  { date:"2024-03", total:34292, yamazaki:21745, ichimiya:7067, haga:3028, chigusa:2452 },
+  // R6年度〜R8年度 (2024-04〜2026-05)
+  { date:"2024-04", total:34227, yamazaki:21704, ichimiya:7057, haga:3020, chigusa:2446 },
+  { date:"2024-05", total:34175, yamazaki:21680, ichimiya:7048, haga:3011, chigusa:2437 },
+  { date:"2024-06", total:34118, yamazaki:21651, ichimiya:7035, haga:2995, chigusa:2437 },
+  { date:"2024-07", total:34078, yamazaki:21634, ichimiya:7019, haga:2996, chigusa:2429 },
+  { date:"2024-08", total:34018, yamazaki:21594, ichimiya:7006, haga:2992, chigusa:2426 },
+  { date:"2024-09", total:33968, yamazaki:21562, ichimiya:7001, haga:2991, chigusa:2414 },
+  { date:"2024-10", total:33905, yamazaki:21539, ichimiya:6980, haga:2985, chigusa:2401 },
+  { date:"2024-11", total:33835, yamazaki:21483, ichimiya:6977, haga:2983, chigusa:2392 },
+  { date:"2024-12", total:33744, yamazaki:21430, ichimiya:6957, haga:2971, chigusa:2386 },
+  { date:"2025-01", total:33648, yamazaki:21387, ichimiya:6926, haga:2959, chigusa:2376 },
+  { date:"2025-02", total:33607, yamazaki:21371, ichimiya:6917, haga:2945, chigusa:2374 },
+  { date:"2025-03", total:33440, yamazaki:21295, ichimiya:6854, haga:2932, chigusa:2359 },
+  { date:"2025-04", total:33407, yamazaki:21277, ichimiya:6846, haga:2927, chigusa:2357 },
+  { date:"2025-05", total:33339, yamazaki:21234, ichimiya:6839, haga:2926, chigusa:2340 },
+  { date:"2025-06", total:33287, yamazaki:21212, ichimiya:6820, haga:2919, chigusa:2336 },
+  { date:"2025-07", total:33224, yamazaki:21186, ichimiya:6799, haga:2905, chigusa:2334 },
+  { date:"2025-08", total:33183, yamazaki:21158, ichimiya:6801, haga:2899, chigusa:2325 },
+  { date:"2025-09", total:33146, yamazaki:21151, ichimiya:6793, haga:2888, chigusa:2314 },
+  { date:"2025-10", total:33150, yamazaki:21156, ichimiya:6800, haga:2885, chigusa:2309 },
+  { date:"2025-11", total:33104, yamazaki:21124, ichimiya:6790, haga:2885, chigusa:2305 },
+  { date:"2025-12", total:33064, yamazaki:21102, ichimiya:6784, haga:2878, chigusa:2300 },
+  { date:"2026-01", total:33005, yamazaki:21077, ichimiya:6767, haga:2873, chigusa:2288 },
+  { date:"2026-02", total:32934, yamazaki:21042, ichimiya:6753, haga:2864, chigusa:2275 },
+  { date:"2026-03", total:32721, yamazaki:20917, ichimiya:6705, haga:2839, chigusa:2260 },
+  { date:"2026-04", total:32656, yamazaki:20887, ichimiya:6687, haga:2829, chigusa:2253 },
+  { date:"2026-05", total:32613, yamazaki:20869, ichimiya:6676, haga:2819, chigusa:2249 },
 ];
 
-const gridColor = 'rgba(255,255,255,0.06)';
-const tickColor = '#8890a8';
-
-// ===== 1. 町別円グラフ =====
-new Chart(document.getElementById('townPie'), {
-  type: 'doughnut',
-  data: {
-    labels: towns.map(t=>t.name),
-    datasets: [{ data: towns.map(t=>totalSum(t.data)), backgroundColor: towns.map(t=>t.color), borderWidth: 2, borderColor: '#1a1d27' }]
-  },
-  options: {
-    responsive: true, maintainAspectRatio: false,
-    plugins: {
-      legend: { position:'right', labels:{ color:tickColor, padding:14, font:{size:12} } },
-      tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.raw.toLocaleString()}人 (${(ctx.raw/32613*100).toFixed(1)}%)` } }
-    }
+// 高齢化・年齢構成データ（5歳階級Excelから。最新月分を更新）
+const AGE_DATA = {
+  "2026-05": {
+    yamazaki: { total:20869, aged65:7368, young014:2218 },
+    ichimiya: { total:6676,  aged65:2923, young014:536  },
+    haga:     { total:2819,  aged65:1319, young014:178  },
+    chigusa:  { total:2249,  aged65:1144, young014:151  },
+    total:    { total:32613, aged65:12754,young014:3083  },
   }
-});
+};
 
-// ===== 2. 年齢ピラミッド =====
-const pyramidMale   = cityMale.map(v=>-v);
-const pyramidFemale = cityFemale;
+// 人口動態データ（出典：厚生労働省 人口動態調査 e-Stat statsDataId:0003411564 宍粟市(28221)）
+// cat01: 100=出生数 120=死亡数 200=婚姻件数 210=離婚件数
+// 更新方法: e-Stat APIから取得 → births/deaths/marriages/divorces を年ごとに更新
+const VITAL_DATA = [
+  { year:2015, births:277, deaths:587, marriages:158, divorces:58 },
+  { year:2016, births:323, deaths:552, marriages:165, divorces:60 },
+  { year:2017, births:270, deaths:583, marriages:141, divorces:58 },
+  { year:2018, births:243, deaths:585, marriages:152, divorces:46 },
+  { year:2019, births:256, deaths:579, marriages:157, divorces:60 },
+  { year:2020, births:225, deaths:602, marriages:127, divorces:56 },
+  { year:2021, births:218, deaths:621, marriages:101, divorces:63 },
+  { year:2022, births:187, deaths:621, marriages:102, divorces:61 },
+  { year:2023, births:202, deaths:570, marriages:101, divorces:48 },
+  { year:2024, births:185, deaths:621, marriages:91,  divorces:47 },
+];
 
-new Chart(document.getElementById('pyramid'), {
-  type: 'bar',
-  data: {
-    labels: AGES,
-    datasets: [
-      { label:'男性', data:pyramidMale,   backgroundColor:'rgba(78,154,241,0.75)',  borderColor:'#4e9af1', borderWidth:1 },
-      { label:'女性', data:pyramidFemale, backgroundColor:'rgba(224,92,138,0.75)', borderColor:'#e05c8a', borderWidth:1 },
-    ]
-  },
-  options: {
-    indexAxis: 'y',
-    responsive: true, maintainAspectRatio: false,
-    plugins: {
-      legend: { labels:{ color:tickColor, font:{size:11} } },
-      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${Math.abs(ctx.raw).toLocaleString()}人` } }
-    },
-    scales: {
-      x: {
-        grid:{ color:gridColor },
-        ticks:{ color:tickColor, font:{size:10}, callback: v => Math.abs(v).toLocaleString() }
+// ============================================================
+//  以下はロジック — 通常は編集不要
+// ============================================================
+
+const TOWN_NAMES = { yamazaki:"山崎町", ichimiya:"一宮町", haga:"波賀町", chigusa:"千種町" };
+const TOWN_COLORS = { yamazaki:"#e67e22", ichimiya:"#27ae60", haga:"#8e44ad", chigusa:"#e74c3c" };
+const TOTAL_COLOR = "#2a6496";
+
+function fmtDate(d) {
+  const [y, m] = d.split("-");
+  const reiwa = parseInt(y) - 2018;
+  return `R${reiwa}.${parseInt(m)}`;
+}
+function fmtNum(n) { return n ? n.toLocaleString() : "-"; }
+function diff(a, b) {
+  const d = a - b;
+  return (d >= 0 ? "▲" : "▼") + Math.abs(d).toLocaleString();
+}
+
+const sorted = [...MONTHLY_DATA].sort((a,b) => a.date.localeCompare(b.date));
+const latest = sorted[sorted.length - 1];
+const prev   = sorted[sorted.length - 2];
+const year_ago = sorted.find(d => d.date === `${parseInt(latest.date.slice(0,4))-1}-${latest.date.slice(5)}`)
+               || sorted[sorted.length - 13];
+
+// ---- KPI Cards ----
+function buildKPI() {
+  const grid = document.getElementById("kpiGrid");
+  const items = [
+    { key:"total",    label:"宍粟市 総人口",  cls:"" },
+    { key:"yamazaki", label:"山崎町",         cls:"yamazaki" },
+    { key:"ichimiya", label:"一宮町",         cls:"ichimiya" },
+    { key:"haga",     label:"波賀町",         cls:"haga" },
+    { key:"chigusa",  label:"千種町",         cls:"chigusa" },
+  ];
+  items.forEach(({key, label, cls}) => {
+    const val  = latest[key];
+    const pval = prev[key];
+    const yval = year_ago ? year_ago[key] : null;
+    const monthDiff = val - pval;
+    const yearDiff  = yval ? val - yval : null;
+    grid.innerHTML += `
+      <div class="kpi-card ${cls}">
+        <div class="kpi-label">${label}</div>
+        <div class="kpi-value">${fmtNum(val)}<span> 人</span></div>
+        <div class="kpi-change ${monthDiff<0?'down':'up'}">前月比 ${diff(val,pval)}</div>
+        ${yearDiff !== null ? `<div class="kpi-change ${yearDiff<0?'down':'up'}">前年同月比 ${diff(val,yval)}</div>` : ""}
+      </div>`;
+  });
+}
+
+// ---- Trend Chart ----
+let trendChart;
+let trendMode = 'all';
+let viewMode  = 'monthly';
+let rangeFrom = 2011;
+let rangeTo   = 2026;
+
+function eraLabel(year) {
+  if (year <= 2018) return 'H' + (year - 1988);
+  if (year === 2019) return 'R1';
+  return 'R' + (year - 2018);
+}
+
+function initRangeSelects() {
+  const years = [...new Set(sorted.map(d => parseInt(d.date)))].sort();
+  // unique years from date strings like "2011-04"
+  const allYears = [...new Set(sorted.map(d => parseInt(d.date.split('-')[0])))].sort((a,b)=>a-b);
+  const from = document.getElementById('rangeFrom');
+  const to   = document.getElementById('rangeTo');
+  allYears.forEach(y => {
+    const lbl = eraLabel(y) + '年(' + y + ')';
+    from.innerHTML += `<option value="${y}">${lbl}</option>`;
+    to.innerHTML   += `<option value="${y}" ${y===allYears[allYears.length-1]?'selected':''}>${lbl}</option>`;
+  });
+  rangeFrom = allYears[0];
+  rangeTo   = allYears[allYears.length - 1];
+  updateRangeInfo();
+}
+
+function updateRange() {
+  rangeFrom = parseInt(document.getElementById('rangeFrom').value);
+  rangeTo   = parseInt(document.getElementById('rangeTo').value);
+  if (rangeFrom > rangeTo) {
+    rangeTo = rangeFrom;
+    document.getElementById('rangeTo').value = rangeTo;
+  }
+  updateRangeInfo();
+  buildTrendChart(trendMode);
+}
+
+function updateRangeInfo() {
+  const n = sorted.filter(d => {
+    const y = parseInt(d.date.split('-')[0]);
+    return y >= rangeFrom && y <= rangeTo;
+  }).length;
+  document.getElementById('rangeInfo').textContent = viewMode === 'monthly'
+    ? '（' + n + 'ヶ月分）'
+    : '（' + Math.ceil(n/12) + '年分）';
+}
+
+function setViewMode(mode) {
+  viewMode = mode;
+  document.getElementById('btnMonthly').classList.toggle('active', mode === 'monthly');
+  document.getElementById('btnYearly').classList.toggle('active', mode === 'yearly');
+  updateRangeInfo();
+  buildTrendChart(trendMode);
+}
+
+function buildTrendChart(mode = 'all') {
+  trendMode = mode;
+
+  // Filter by selected year range
+  const filtered = sorted.filter(d => {
+    const y = parseInt(d.date.split('-')[0]);
+    return y >= rangeFrom && y <= rangeTo;
+  });
+
+  let displayData, labels;
+
+  if (viewMode === 'yearly') {
+    // Use April (fiscal year start) value per year; fall back to earliest month if no April
+    const yearMap = {};
+    filtered.forEach(d => {
+      const [y, m] = d.date.split('-').map(Number);
+      if (!yearMap[y] || m === 4) yearMap[y] = d;
+    });
+    const yrs = Object.keys(yearMap).map(Number).sort((a,b)=>a-b);
+    displayData = yrs.map(y => yearMap[y]);
+    labels      = yrs.map(y => eraLabel(y) + '年');
+  } else {
+    displayData = filtered;
+    // Show year label only in April, blank otherwise → clean x-axis
+    labels = filtered.map(d => {
+      const [y, m] = d.date.split('-').map(Number);
+      return m === 4 ? eraLabel(y) + '年' : '';
+    });
+  }
+
+  const pts = viewMode === 'yearly' ? 4 : 0;
+
+  let datasets;
+  if (mode === 'all') {
+    datasets = [
+      { label:"宍粟市計", data:displayData.map(d=>d.total),    borderColor:TOTAL_COLOR,          backgroundColor:TOTAL_COLOR+"22",          fill:false, tension:0.3, pointRadius:pts,   borderWidth:2.5 },
+      { label:"山崎町",   data:displayData.map(d=>d.yamazaki), borderColor:TOWN_COLORS.yamazaki, backgroundColor:TOWN_COLORS.yamazaki+"22", fill:false, tension:0.3, pointRadius:pts,   yAxisID:'y2' },
+      { label:"一宮町",   data:displayData.map(d=>d.ichimiya), borderColor:TOWN_COLORS.ichimiya, backgroundColor:TOWN_COLORS.ichimiya+"22", fill:false, tension:0.3, pointRadius:pts,   yAxisID:'y2' },
+      { label:"波賀町",   data:displayData.map(d=>d.haga),     borderColor:TOWN_COLORS.haga,     backgroundColor:TOWN_COLORS.haga+"22",     fill:false, tension:0.3, pointRadius:pts,   yAxisID:'y2' },
+      { label:"千種町",   data:displayData.map(d=>d.chigusa),  borderColor:TOWN_COLORS.chigusa,  backgroundColor:TOWN_COLORS.chigusa+"22",  fill:false, tension:0.3, pointRadius:pts,   yAxisID:'y2' },
+    ];
+  } else {
+    datasets = [
+      { label:TOWN_NAMES[mode], data:displayData.map(d=>d[mode]), borderColor:TOWN_COLORS[mode], backgroundColor:TOWN_COLORS[mode]+"33", fill:true, tension:0.3, pointRadius:pts||2, borderWidth:2.5 }
+    ];
+  }
+
+  const xTicks = {
+    maxRotation: 45,
+    font: { size: 11 },
+    callback: function(val, idx) { return labels[idx]; }
+  };
+
+  const scales = mode === 'all' ? {
+    y:  { position:'left',  title:{display:true, text:'宍粟市計（人）'}, ticks:{callback:v=>v.toLocaleString()} },
+    y2: { position:'right', title:{display:true, text:'各町（人）'},    ticks:{callback:v=>v.toLocaleString()}, grid:{drawOnChartArea:false} },
+    x:  { ticks: xTicks }
+  } : {
+    y:  { ticks:{callback:v=>v.toLocaleString()} },
+    x:  { ticks: xTicks }
+  };
+
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById("trendChart"), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      interaction: { mode:'index', intersect:false },
+      plugins: {
+        legend: { position:'top', labels:{font:{size:11}} },
+        tooltip: {
+          callbacks: {
+            title: function(items) {
+              const d = displayData[items[0].dataIndex];
+              return d ? fmtDate(d.date) : '';
+            }
+          }
+        }
       },
-      y: { grid:{ color:gridColor }, ticks:{ color:tickColor, font:{size:10} } }
+      scales
     }
-  }
-});
+  });
+}
 
-// ===== 3. 高齢化率テーブル + 年少人口グラフ =====
-const tbody = document.getElementById('aging-tbody');
-const agingRates = [];
-const youthRates = [];
-const townNames = [];
+function showTrend(mode) {
+  document.querySelectorAll('#trendTabs .tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  buildTrendChart(mode);
+}
 
-towns.forEach(t => {
-  const total   = totalSum(t.data);
-  const elderly = elderlySum(t.data);
-  const youth   = youthSum(t.data);
-  const rate    = (elderly/total*100).toFixed(1);
-  const yrate   = (youth/total*100).toFixed(1);
-  agingRates.push(parseFloat(rate));
-  youthRates.push(parseFloat(yrate));
-  townNames.push(t.name);
-  const national = 29.3;
-  const diff = (parseFloat(rate) - national).toFixed(1);
-  const sign = diff > 0 ? '+' : '';
-  const diffColor = diff > 0 ? '#f87171' : '#1dd9a0';
-  tbody.innerHTML += `
-    <tr>
-      <td style="color:${t.color}; font-weight:500;">${t.name}</td>
-      <td>${elderly.toLocaleString()}人</td>
-      <td>
-        <div class="bar-cell">
-          <div class="bar-mini" style="width:${Math.min(rate*2,100)}px; background:${t.color};"></div>
-          <strong>${rate}%</strong>
-        </div>
-      </td>
-      <td style="color:${diffColor}; font-weight:700;">${sign}${diff}%</td>
+// ---- Aging Bar Chart ----
+function buildAgingChart() {
+  const ageKey = Object.keys(AGE_DATA).sort().pop();
+  const d = AGE_DATA[ageKey];
+  const towns = ['yamazaki','ichimiya','haga','chigusa'];
+  const townLabels = towns.map(t => TOWN_NAMES[t]);
+  const aged65pct  = towns.map(t => +(d[t].aged65  / d[t].total * 100).toFixed(1));
+  const young014pct= towns.map(t => +(d[t].young014 / d[t].total * 100).toFixed(1));
+
+  new Chart(document.getElementById("agingChart"), {
+    type: 'bar',
+    data: {
+      labels: townLabels,
+      datasets: [
+        { label:"65歳以上（%）",  data:aged65pct,   backgroundColor:["#e67e2288","#27ae6088","#8e44ad88","#e74c3c88"], borderColor:Object.values(TOWN_COLORS), borderWidth:2 },
+        { label:"0〜14歳（%）", data:young014pct, backgroundColor:["#f39c1244","#3498db44","#1abc9c44","#e91e6344"], borderColor:["#f39c12","#3498db","#1abc9c","#e91e63"], borderWidth:2 }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position:'top', labels:{font:{size:11}} },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}%` } }
+      },
+      scales: {
+        y: { beginAtZero:true, max:60, ticks:{ callback:v=>v+'%' } }
+      }
+    }
+  });
+}
+
+// ---- Pie Chart ----
+function buildPieChart() {
+  const towns = ['yamazaki','ichimiya','haga','chigusa'];
+  new Chart(document.getElementById("pieChart"), {
+    type: 'doughnut',
+    data: {
+      labels: towns.map(t => TOWN_NAMES[t]),
+      datasets: [{
+        data: towns.map(t => latest[t]),
+        backgroundColor: Object.values(TOWN_COLORS).map(c => c + "cc"),
+        borderColor: Object.values(TOWN_COLORS),
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position:'right' },
+        tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.raw.toLocaleString()}人 (${(ctx.raw/latest.total*100).toFixed(1)}%)` } }
+      }
+    }
+  });
+}
+
+// ---- Data Table ----
+function buildTable() {
+  const desc = [...sorted].reverse();
+  let html = `<thead><tr>
+    <th>基準日</th>
+    <th>宍粟市計</th><th>前月差</th>
+    <th>山崎町</th><th>一宮町</th><th>波賀町</th><th>千種町</th>
+  </tr></thead><tbody>`;
+  desc.forEach((row, i) => {
+    const next = desc[i+1];
+    const monthDiff = next ? row.total - next.total : null;
+    const diffStr = monthDiff !== null
+      ? `<span style="color:${monthDiff<0?'#e74c3c':'#27ae60'}">${monthDiff>=0?'+':''}${monthDiff.toLocaleString()}</span>`
+      : "-";
+    html += `<tr>
+      <td>${fmtDate(row.date)}</td>
+      <td class="num">${fmtNum(row.total)}</td>
+      <td class="num">${diffStr}</td>
+      <td class="num">${fmtNum(row.yamazaki)}</td>
+      <td class="num">${fmtNum(row.ichimiya)}</td>
+      <td class="num">${fmtNum(row.haga)}</td>
+      <td class="num">${fmtNum(row.chigusa)}</td>
     </tr>`;
-});
+  });
+  html += "</tbody>";
+  document.getElementById("dataTable").innerHTML = html;
+}
 
-new Chart(document.getElementById('youngBar'), {
-  type:'bar',
-  data:{
-    labels: townNames,
-    datasets:[{ label:'年少人口割合（0-14歳）', data:youthRates, backgroundColor: towns.map(t=>t.color), borderRadius:4 }]
-  },
-  options:{
-    responsive:true, maintainAspectRatio:false,
-    plugins:{
-      legend:{display:false},
-      tooltip:{ callbacks:{ label: ctx => `${ctx.raw}%` } }
+// ---- Vital Statistics Charts ----
+function buildVitalChart() {
+  const labels  = VITAL_DATA.map(d => eraLabel(d.year) + '年');
+  const births  = VITAL_DATA.map(d => d.births);
+  const deaths  = VITAL_DATA.map(d => d.deaths);
+  const natural = VITAL_DATA.map(d => d.births - d.deaths);
+
+  new Chart(document.getElementById("vitalChart"), {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: '出生数',
+          data: births,
+          backgroundColor: '#27ae6088',
+          borderColor: '#27ae60',
+          borderWidth: 1,
+          order: 2,
+        },
+        {
+          type: 'bar',
+          label: '死亡数',
+          data: deaths,
+          backgroundColor: '#e74c3c88',
+          borderColor: '#e74c3c',
+          borderWidth: 1,
+          order: 2,
+        },
+        {
+          type: 'line',
+          label: '自然増減',
+          data: natural,
+          borderColor: '#2a6496',
+          backgroundColor: '#2a649620',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 4,
+          borderWidth: 2,
+          order: 1,
+          yAxisID: 'y2',
+        },
+      ]
     },
-    scales:{
-      x:{ grid:{color:gridColor}, ticks:{color:tickColor} },
-      y:{ grid:{color:gridColor}, ticks:{color:tickColor, callback:v=>v+'%'}, max:15,
-          title:{display:true, text:'年少人口割合(%)', color:tickColor, font:{size:10}} }
+    options: {
+      responsive: true,
+      interaction: { mode:'index', intersect:false },
+      plugins: { legend:{ position:'top', labels:{font:{size:11}} } },
+      scales: {
+        y:  { position:'left',  title:{display:true, text:'人'}, ticks:{callback:v=>v.toLocaleString()}, beginAtZero:true },
+        y2: { position:'right', title:{display:true, text:'自然増減（人）'}, ticks:{callback:v=>v.toLocaleString()}, grid:{drawOnChartArea:false} },
+        x:  { ticks:{font:{size:11}} }
+      }
     }
-  }
-});
+  });
+}
 
-// ===== 4. 5歳階級 町別比較 =====
-new Chart(document.getElementById('townAge'), {
-  type:'bar',
-  data:{
-    labels: AGES,
-    datasets: towns.map(t=>({
-      label:t.name,
-      data:t.data,
-      backgroundColor:t.colorFade,
-      borderColor:t.color,
-      borderWidth:2,
-      borderRadius:2,
-    }))
-  },
-  options:{
-    responsive:true, maintainAspectRatio:false,
-    plugins:{
-      legend:{ labels:{color:tickColor, font:{size:12}} },
-      tooltip:{ mode:'index', intersect:false }
+function buildMarriageChart() {
+  const labels    = VITAL_DATA.map(d => eraLabel(d.year) + '年');
+  const marriages = VITAL_DATA.map(d => d.marriages);
+  const divorces  = VITAL_DATA.map(d => d.divorces);
+
+  new Chart(document.getElementById("marriageChart"), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label:'婚姻件数', data:marriages, backgroundColor:'#f39c1288', borderColor:'#f39c12', borderWidth:1 },
+        { label:'離婚件数', data:divorces,  backgroundColor:'#9b59b688', borderColor:'#9b59b6', borderWidth:1 },
+      ]
     },
-    scales:{
-      x:{ grid:{color:gridColor}, ticks:{color:tickColor, font:{size:11}} },
-      y:{ grid:{color:gridColor}, ticks:{color:tickColor}, title:{display:true, text:'人口（人）', color:tickColor, font:{size:10}} }
+    options: {
+      responsive: true,
+      interaction: { mode:'index', intersect:false },
+      plugins: { legend:{ position:'top', labels:{font:{size:11}} } },
+      scales: {
+        y: { beginAtZero:true, title:{display:true, text:'件'}, ticks:{callback:v=>v.toLocaleString()} },
+        x: { ticks:{font:{size:11}} }
+      }
     }
-  }
-});
+  });
+}
 
-// ===== 5. 若年女性 20〜39歳（インデックス4〜7）町別 =====
-// 女性データ（PDFより）
-const yamazakiFemale = [269,347,455,549,413,359,348,479,593,653,810,687,636,779,895,1035,570,482,293,115,21];
-const ichimiyaFemale = [55,80,115,126,102,71,82,148,139,179,197,237,272,332,323,353,240,208,148,46,8];
-const hagaFemale     = [14,40,34,37,54,43,36,46,56,70,104,96,126,105,138,157,118,100,69,32,6];
-const chigusaFemale  = [9,26,34,33,26,27,24,39,43,45,71,72,95,130,115,120,84,97,63,27,7];
-
-const ageGroups20_39 = ['20-24歳','25-29歳','30-34歳','35-39歳'];
-const fTowns = [
-  {name:'山崎町', color:'#4e9af1', d:yamazakiFemale.slice(4,8)},
-  {name:'一宮町', color:'#1dd9a0', d:ichimiyaFemale.slice(4,8)},
-  {name:'波賀町', color:'#f5a623', d:hagaFemale.slice(4,8)},
-  {name:'千種町', color:'#e05c8a', d:chigusaFemale.slice(4,8)},
-];
-
-new Chart(document.getElementById('youngWomen'), {
-  type:'bar',
-  data:{
-    labels: ageGroups20_39,
-    datasets: fTowns.map(t=>({
-      label:t.name, data:t.d,
-      backgroundColor:t.color+'99',
-      borderColor:t.color, borderWidth:1.5, borderRadius:3
-    }))
-  },
-  options:{
-    responsive:true, maintainAspectRatio:false,
-    plugins:{ legend:{ labels:{color:tickColor, font:{size:11}} } },
-    scales:{
-      x:{ grid:{color:gridColor}, ticks:{color:tickColor} },
-      y:{ grid:{color:gridColor}, ticks:{color:tickColor},
-          title:{display:true, text:'女性人口（人）', color:tickColor, font:{size:10}} }
-    }
-  }
-});
-
-// ===== 6. 男女差（女性－男性）5歳階級 =====
-const genderDiff = cityFemale.map((f,i) => f - cityMale[i]);
-const diffColors = genderDiff.map(v => v >= 0 ? 'rgba(224,92,138,0.7)' : 'rgba(78,154,241,0.7)');
-
-new Chart(document.getElementById('genderDiff'), {
-  type:'bar',
-  data:{
-    labels: AGES,
-    datasets:[{
-      label:'女性－男性（人）',
-      data: genderDiff,
-      backgroundColor: diffColors,
-      borderRadius:3
-    }]
-  },
-  options:{
-    responsive:true, maintainAspectRatio:false,
-    plugins:{
-      legend:{ labels:{color:tickColor, font:{size:11}} },
-      tooltip:{ callbacks:{ label: ctx => `${ctx.raw > 0 ? '女性が' : '男性が'}${Math.abs(ctx.raw)}人多い` } }
-    },
-    scales:{
-      x:{ grid:{color:gridColor}, ticks:{color:tickColor, font:{size:10}} },
-      y:{ grid:{color:gridColor}, ticks:{color:tickColor} }
-    }
-  }
-});
+// ---- Init ----
+buildKPI();
+initRangeSelects();
+buildTrendChart('all');
+buildAgingChart();
+buildPieChart();
+buildVitalChart();
+buildMarriageChart();
+buildTable();
 </script>
 </body>
 </html>
