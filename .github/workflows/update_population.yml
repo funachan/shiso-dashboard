@@ -1,0 +1,40 @@
+name: 人口データ自動更新
+
+on:
+  # 毎月5日の午前10時（JST）に自動実行
+  # ※宍粟市HPは月初に前月データを公開するため5日に設定
+  schedule:
+    - cron: '0 1 5 * *'   # UTC 01:00 = JST 10:00
+
+  # 手動実行も可能（GitHubのActionsタブから「Run workflow」ボタン）
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # HTMLファイルをコミットするために必要
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python セットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 依存パッケージをインストール
+        run: pip install requests beautifulsoup4
+
+      - name: データ更新スクリプトを実行
+        env:
+          ESTAT_APP_ID: ${{ secrets.ESTAT_APP_ID }}
+        run: python scripts/update_population.py
+
+      - name: 変更をコミット・プッシュ
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: '自動更新: 人口データ更新'
+          commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
+          file_pattern: 'shiso_population_dashboard.html'
