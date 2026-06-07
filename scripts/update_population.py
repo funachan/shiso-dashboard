@@ -33,8 +33,7 @@ ESTAT_STATS_ID = "0003411564"
 AREA_CODE      = "28221"  # 宍粟市
 
 # このスクリプトから見たHTMLファイルのパス
-HTML_PATH = os.path.join(os.path.dirname(__file__), "..", "shiso_population_dashboard.html")
-
+HTML_PATH = os.path.join(os.path.dirname(__file__), "..", "shiso_dashboard.html")
 
 # ================================================================
 #  元号 → 西暦 変換
