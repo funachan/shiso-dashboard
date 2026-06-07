@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>宍粟市 人口ダッシュボード</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Oswald:wght@400;600&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3450;
+    --text: #e8eaf0;
+    --text-dim: #8890a8;
+    --yamazaki: #4e9af1;
+    --ichimiya: #1dd9a0;
+    --haga: #f5a623;
+    --chigusa: #e05c8a;
+    --total: #a78bfa;
+    --danger: #f87171;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  header h1 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: #fff;
+  }
+
+  header p {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  .badge {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: right;
+  }
+
+  .badge strong {
+    display: block;
+    color: var(--text);
+    font-size: 14px;
+  }
+
+  /* KPIカード */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .kpi::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+
+  .kpi.total::before { background: var(--total); }
+  .kpi.yamazaki::before { background: var(--yamazaki); }
+  .kpi.ichimiya::before { background: var(--ichimiya); }
+  .kpi.haga::before { background: var(--haga); }
+  .kpi.chigusa::before { background: var(--chigusa); }
+
+  .kpi-label { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
+  .kpi-value { font-family: 'Oswald', sans-serif; font-size: 26px; font-weight: 600; color: #fff; }
+  .kpi-sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .kpi-sub span { color: var(--danger); font-weight: 700; }
+
+  /* セクション */
+  .section-title {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    padding-left: 10px;
+    border-left: 3px solid var(--total);
+  }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+
+  .chart-wrap { position: relative; height: 240px; }
+  .chart-wrap-lg { position: relative; height: 300px; }
+  .chart-wrap-xl { position: relative; height: 340px; }
+
+  .card h3 {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+
+  /* 男女比バー */
+  .gender-bar-wrap { margin-top: 12px; }
+  .gender-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+  .gender-bar-label { width: 56px; color: var(--text-dim); flex-shrink: 0; }
+  .gender-bar { flex: 1; height: 18px; border-radius: 3px; display: flex; overflow: hidden; }
+  .gender-bar .male { background: var(--yamazaki); opacity: 0.85; }
+  .gender-bar .female { background: var(--chigusa); opacity: 0.85; }
+  .gender-bar-nums { width: 100px; text-align: right; color: var(--text-dim); flex-shrink: 0; font-size: 11px; }
+
+  /* 凡例 */
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; color: var(--text-dim); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* 高齢化率テーブル */
+  .aging-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .aging-table th { color: var(--text-dim); font-weight: 400; text-align: left; padding: 6px 8px; font-size: 11px; border-bottom: 1px solid var(--border); }
+  .aging-table td { padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  .aging-table tr:last-child td { border-bottom: none; }
+
+  .bar-cell { display: flex; align-items: center; gap: 8px; }
+  .bar-mini { height: 8px; border-radius: 4px; min-width: 4px; }
+
+  .note { font-size: 11px; color: var(--text-dim); margin-top: 12px; }
+
+  footer {
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>宍粟市 人口ダッシュボード</h1>
+    <p>住民基本台帳データに基づく人口・高齢化分析（令和8年5月31日現在）</p>
+  </div>
+  <div class="badge">
+    基準日<strong>2026年5月31日</strong>
+  </div>
+</header>
+
+<!-- KPIカード -->
+<div class="kpi-grid">
+  <div class="kpi total">
+    <div class="kpi-label">宍粟市 総人口</div>
+    <div class="kpi-value">32,613</div>
+    <div class="kpi-sub">世帯数 14,516</div>
+  </div>
+  <div class="kpi yamazaki">
+    <div class="kpi-label">山崎町</div>
+    <div class="kpi-value">20,869</div>
+    <div class="kpi-sub">64.0% ／ 9,337世帯</div>
+  </div>
+  <div class="kpi ichimiya">
+    <div class="kpi-label">一宮町</div>
+    <div class="kpi-value">6,676</div>
+    <div class="kpi-sub">20.5% ／ 2,835世帯</div>
+  </div>
+  <div class="kpi haga">
+    <div class="kpi-label">波賀町</div>
+    <div class="kpi-value">2,819</div>
+    <div class="kpi-sub">8.6% ／ 1,295世帯</div>
+  </div>
+  <div class="kpi chigusa">
+    <div class="kpi-label">千種町</div>
+    <div class="kpi-value">2,249</div>
+    <div class="kpi-sub">6.9% ／ 1,049世帯</div>
+  </div>
+</div>
+
+<!-- 町別構成 + 男女比 -->
+<div class="grid-2">
+  <div class="card">
+    <h3>町別人口構成</h3>
+    <div class="chart-wrap">
+      <canvas id="townPie"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <h3>町別 男女比較</h3>
+    <div class="gender-bar-wrap" style="margin-top:20px;">
+      <div class="gender-bar-row">
+        <div class="gender-bar-label">山崎町</div>
+        <div class="gender-bar">
+          <div class="male" style="width:48.3%"></div>
+          <div class="female" style="width:51.7%"></div>
+        </div>
+        <div class="gender-bar-nums">男10,081 女10,788</div>
+      </div>
+      <div class="gender-bar-row">
+        <div class="gender-bar-label">一宮町</div>
+        <div class="gender-bar">
+          <div class="male" style="width:48.2%"></div>
+          <div class="female" style="width:51.8%"></div>
+        </div>
+        <div class="gender-bar-nums">男3,215 女3,461</div>
+      </div>
+      <div class="gender-bar-row">
+        <div class="gender-bar-label">波賀町</div>
+        <div class="gender-bar">
+          <div class="male" style="width:47.5%"></div>
+          <div class="female" style="width:52.5%"></div>
+        </div>
+        <div class="gender-bar-nums">男1,338 女1,481</div>
+      </div>
+      <div class="gender-bar-row">
+        <div class="gender-bar-label">千種町</div>
+        <div class="gender-bar">
+          <div class="male" style="width:47.2%"></div>
+          <div class="female" style="width:52.8%"></div>
+        </div>
+        <div class="gender-bar-nums">男1,062 女1,187</div>
+      </div>
+      <div class="gender-bar-row" style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+        <div class="gender-bar-label" style="color:var(--text); font-weight:500;">宍粟市計</div>
+        <div class="gender-bar">
+          <div class="male" style="width:48.1%"></div>
+          <div class="female" style="width:51.9%"></div>
+        </div>
+        <div class="gender-bar-nums">男15,696 女16,917</div>
+      </div>
+      <div class="note" style="margin-top:16px;">
+        <span style="display:inline-block;width:10px;height:10px;background:var(--yamazaki);border-radius:2px;margin-right:4px;"></span>男性
+        <span style="display:inline-block;width:10px;height:10px;background:var(--chigusa);border-radius:2px;margin-left:12px;margin-right:4px;"></span>女性
+        ／ すべての町で女性が男性を上回る
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 年齢ピラミッド + 高齢化率 -->
+<p class="section-title">年齢構造・高齢化分析</p>
+<div class="grid-2" style="margin-bottom:24px;">
+  <div class="card">
+    <h3>宍粟市 年齢ピラミッド（5歳階級）</h3>
+    <div class="chart-wrap-xl">
+      <canvas id="pyramid"></canvas>
+    </div>
+    <p class="note">※ 左：男性 / 右：女性。中心から外側に向かって人数が増える。</p>
+  </div>
+  <div class="card">
+    <h3>町別 高齢化率（65歳以上の割合）</h3>
+    <br>
+    <table class="aging-table">
+      <thead>
+        <tr>
+          <th>町</th>
+          <th>65歳以上</th>
+          <th>高齢化率</th>
+          <th>全国比較</th>
+        </tr>
+      </thead>
+      <tbody id="aging-tbody"></tbody>
+    </table>
+    <p class="note" style="margin-top:16px;">※ 全国平均（2024年）約29.3%、兵庫県約28.1%</p>
+    <br>
+    <h3>町別 年少人口（0〜14歳）割合</h3>
+    <div class="chart-wrap" style="height:180px; margin-top:12px;">
+      <canvas id="youngBar"></canvas>
+    </div>
+    <p class="note">※ 全国平均（2024年）約11.4%</p>
+  </div>
+</div>
+
+<!-- 5歳階級 町別比較 -->
+<p class="section-title">町別 年齢階級別人口比較</p>
+<div class="card" style="margin-bottom:24px;">
+  <h3>5歳階級別人口 — 4町比較（男女計）</h3>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--yamazaki)"></div>山崎町</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--ichimiya)"></div>一宮町</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--haga)"></div>波賀町</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--chigusa)"></div>千種町</div>
+  </div>
+  <div class="chart-wrap-xl">
+    <canvas id="townAge"></canvas>
+  </div>
+</div>
+
+<!-- 若年女性 特別分析 -->
+<p class="section-title">政策分析：若年女性の状況</p>
+<div class="grid-2">
+  <div class="card">
+    <h3>20〜39歳 女性人口（町別）— 政策上重要な世代</h3>
+    <div class="chart-wrap">
+      <canvas id="youngWomen"></canvas>
+    </div>
+    <p class="note">この世代の定住・転入が出生数・人口回復の鍵。正規雇用機会の創出が直結する。</p>
+  </div>
+  <div class="card">
+    <h3>宍粟市 世代別 男女差（女性－男性）</h3>
+    <div class="chart-wrap">
+      <canvas id="genderDiff"></canvas>
+    </div>
+    <p class="note">プラス＝女性が多い、マイナス＝男性が多い。20〜40代で男性が多い傾向は女性流出を示す可能性。</p>
+  </div>
+</div>
+
+<footer>
+  データ出典：宍粟市 住民基本台帳（令和8年5月31日現在）／ 年齢別人口・行政区別人口データ<br>
+  ※ このダッシュボードは議員活動の調査・政策立案支援を目的として作成。転出入・出生死亡の詳細はe-Stat等の追加データで補完予定。
+</footer>
+
+<script>
+// ===== データ =====
+const AGES = ['0-4','5-9','10-14','15-19','20-24','25-29','30-34','35-39','40-44','45-49','50-54','55-59','60-64','65-69','70-74','75-79','80-84','85-89','90-94','95-99','100+'];
+
+// 宍粟市全体（男・女）1歳刻み→5歳階級集計
+const cityMale   = [354,505,746,767,639,545,571,698,939,1055,1217,1062,1060,1239,1403,1455,704,420,249,65,3];
+const cityFemale = [347,493,638,745,595,500,490,712,831,947,1182,1092,1129,1346,1471,1665,1012,887,573,220,42];
+
+// 4町 男女計 5歳階級
+const yamazakiData = [534,704,980,1071,862,740,740,964,1237,1394,1647,1386,1242,1456,1700,1912,989,719,422,147,23];
+const ichimiyaData = [112,163,261,282,213,168,191,280,312,387,423,439,522,639,634,675,406,299,200,62,8];
+const hagaData     = [33,71,74,102,108,82,72,82,124,130,192,188,242,236,279,301,184,163,110,40,6];
+const chigusaData  = [22,60,69,57,51,55,58,84,97,91,137,141,183,254,261,232,137,126,90,36,8];
+
+// 高齢化分析（65歳以上インデックス13以降）
+function elderlySum(arr) { return arr.slice(13).reduce((a,b)=>a+b,0); }
+function totalSum(arr)   { return arr.reduce((a,b)=>a+b,0); }
+function youthSum(arr)   { return arr.slice(0,3).reduce((a,b)=>a+b,0); }
+
+const towns = [
+  { name:'山崎町', data:yamazakiData, color:'#4e9af1', colorFade:'rgba(78,154,241,0.15)' },
+  { name:'一宮町', data:ichimiyaData, color:'#1dd9a0', colorFade:'rgba(29,217,160,0.15)' },
+  { name:'波賀町', data:hagaData,     color:'#f5a623', colorFade:'rgba(245,166,35,0.15)' },
+  { name:'千種町', data:chigusaData,  color:'#e05c8a', colorFade:'rgba(224,92,138,0.15)' },
+];
+
+const gridColor = 'rgba(255,255,255,0.06)';
+const tickColor = '#8890a8';
+
+// ===== 1. 町別円グラフ =====
+new Chart(document.getElementById('townPie'), {
+  type: 'doughnut',
+  data: {
+    labels: towns.map(t=>t.name),
+    datasets: [{ data: towns.map(t=>totalSum(t.data)), backgroundColor: towns.map(t=>t.color), borderWidth: 2, borderColor: '#1a1d27' }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { position:'right', labels:{ color:tickColor, padding:14, font:{size:12} } },
+      tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.raw.toLocaleString()}人 (${(ctx.raw/32613*100).toFixed(1)}%)` } }
+    }
+  }
+});
+
+// ===== 2. 年齢ピラミッド =====
+const pyramidMale   = cityMale.map(v=>-v);
+const pyramidFemale = cityFemale;
+
+new Chart(document.getElementById('pyramid'), {
+  type: 'bar',
+  data: {
+    labels: AGES,
+    datasets: [
+      { label:'男性', data:pyramidMale,   backgroundColor:'rgba(78,154,241,0.75)',  borderColor:'#4e9af1', borderWidth:1 },
+      { label:'女性', data:pyramidFemale, backgroundColor:'rgba(224,92,138,0.75)', borderColor:'#e05c8a', borderWidth:1 },
+    ]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { labels:{ color:tickColor, font:{size:11} } },
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${Math.abs(ctx.raw).toLocaleString()}人` } }
+    },
+    scales: {
+      x: {
+        grid:{ color:gridColor },
+        ticks:{ color:tickColor, font:{size:10}, callback: v => Math.abs(v).toLocaleString() }
+      },
+      y: { grid:{ color:gridColor }, ticks:{ color:tickColor, font:{size:10} } }
+    }
+  }
+});
+
+// ===== 3. 高齢化率テーブル + 年少人口グラフ =====
+const tbody = document.getElementById('aging-tbody');
+const agingRates = [];
+const youthRates = [];
+const townNames = [];
+
+towns.forEach(t => {
+  const total   = totalSum(t.data);
+  const elderly = elderlySum(t.data);
+  const youth   = youthSum(t.data);
+  const rate    = (elderly/total*100).toFixed(1);
+  const yrate   = (youth/total*100).toFixed(1);
+  agingRates.push(parseFloat(rate));
+  youthRates.push(parseFloat(yrate));
+  townNames.push(t.name);
+  const national = 29.3;
+  const diff = (parseFloat(rate) - national).toFixed(1);
+  const sign = diff > 0 ? '+' : '';
+  const diffColor = diff > 0 ? '#f87171' : '#1dd9a0';
+  tbody.innerHTML += `
+    <tr>
+      <td style="color:${t.color}; font-weight:500;">${t.name}</td>
+      <td>${elderly.toLocaleString()}人</td>
+      <td>
+        <div class="bar-cell">
+          <div class="bar-mini" style="width:${Math.min(rate*2,100)}px; background:${t.color};"></div>
+          <strong>${rate}%</strong>
+        </div>
+      </td>
+      <td style="color:${diffColor}; font-weight:700;">${sign}${diff}%</td>
+    </tr>`;
+});
+
+new Chart(document.getElementById('youngBar'), {
+  type:'bar',
+  data:{
+    labels: townNames,
+    datasets:[{ label:'年少人口割合（0-14歳）', data:youthRates, backgroundColor: towns.map(t=>t.color), borderRadius:4 }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{
+      legend:{display:false},
+      tooltip:{ callbacks:{ label: ctx => `${ctx.raw}%` } }
+    },
+    scales:{
+      x:{ grid:{color:gridColor}, ticks:{color:tickColor} },
+      y:{ grid:{color:gridColor}, ticks:{color:tickColor, callback:v=>v+'%'}, max:15,
+          title:{display:true, text:'年少人口割合(%)', color:tickColor, font:{size:10}} }
+    }
+  }
+});
+
+// ===== 4. 5歳階級 町別比較 =====
+new Chart(document.getElementById('townAge'), {
+  type:'bar',
+  data:{
+    labels: AGES,
+    datasets: towns.map(t=>({
+      label:t.name,
+      data:t.data,
+      backgroundColor:t.colorFade,
+      borderColor:t.color,
+      borderWidth:2,
+      borderRadius:2,
+    }))
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{
+      legend:{ labels:{color:tickColor, font:{size:12}} },
+      tooltip:{ mode:'index', intersect:false }
+    },
+    scales:{
+      x:{ grid:{color:gridColor}, ticks:{color:tickColor, font:{size:11}} },
+      y:{ grid:{color:gridColor}, ticks:{color:tickColor}, title:{display:true, text:'人口（人）', color:tickColor, font:{size:10}} }
+    }
+  }
+});
+
+// ===== 5. 若年女性 20〜39歳（インデックス4〜7）町別 =====
+// 女性データ（PDFより）
+const yamazakiFemale = [269,347,455,549,413,359,348,479,593,653,810,687,636,779,895,1035,570,482,293,115,21];
+const ichimiyaFemale = [55,80,115,126,102,71,82,148,139,179,197,237,272,332,323,353,240,208,148,46,8];
+const hagaFemale     = [14,40,34,37,54,43,36,46,56,70,104,96,126,105,138,157,118,100,69,32,6];
+const chigusaFemale  = [9,26,34,33,26,27,24,39,43,45,71,72,95,130,115,120,84,97,63,27,7];
+
+const ageGroups20_39 = ['20-24歳','25-29歳','30-34歳','35-39歳'];
+const fTowns = [
+  {name:'山崎町', color:'#4e9af1', d:yamazakiFemale.slice(4,8)},
+  {name:'一宮町', color:'#1dd9a0', d:ichimiyaFemale.slice(4,8)},
+  {name:'波賀町', color:'#f5a623', d:hagaFemale.slice(4,8)},
+  {name:'千種町', color:'#e05c8a', d:chigusaFemale.slice(4,8)},
+];
+
+new Chart(document.getElementById('youngWomen'), {
+  type:'bar',
+  data:{
+    labels: ageGroups20_39,
+    datasets: fTowns.map(t=>({
+      label:t.name, data:t.d,
+      backgroundColor:t.color+'99',
+      borderColor:t.color, borderWidth:1.5, borderRadius:3
+    }))
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ labels:{color:tickColor, font:{size:11}} } },
+    scales:{
+      x:{ grid:{color:gridColor}, ticks:{color:tickColor} },
+      y:{ grid:{color:gridColor}, ticks:{color:tickColor},
+          title:{display:true, text:'女性人口（人）', color:tickColor, font:{size:10}} }
+    }
+  }
+});
+
+// ===== 6. 男女差（女性－男性）5歳階級 =====
+const genderDiff = cityFemale.map((f,i) => f - cityMale[i]);
+const diffColors = genderDiff.map(v => v >= 0 ? 'rgba(224,92,138,0.7)' : 'rgba(78,154,241,0.7)');
+
+new Chart(document.getElementById('genderDiff'), {
+  type:'bar',
+  data:{
+    labels: AGES,
+    datasets:[{
+      label:'女性－男性（人）',
+      data: genderDiff,
+      backgroundColor: diffColors,
+      borderRadius:3
+    }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{
+      legend:{ labels:{color:tickColor, font:{size:11}} },
+      tooltip:{ callbacks:{ label: ctx => `${ctx.raw > 0 ? '女性が' : '男性が'}${Math.abs(ctx.raw)}人多い` } }
+    },
+    scales:{
+      x:{ grid:{color:gridColor}, ticks:{color:tickColor, font:{size:10}} },
+      y:{ grid:{color:gridColor}, ticks:{color:tickColor} }
+    }
+  }
+});
+</script>
+</body>
+</html>
