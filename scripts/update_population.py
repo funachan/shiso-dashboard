@@ -1,349 +1,527 @@
-#!/usr/bin/env python3
 """
-宍粟市 人口ダッシュボード 自動更新スクリプト
-================================================
-機能:
-  1. 宍粟市HPから月次人口データを取得（住民基本台帳）
-  2. e-Stat APIから人口動態データを取得（出生・死亡・婚姻・離婚）
-  3. shiso_population_dashboard.html を自動更新
+宍粟市 追加統計データ自動更新スクリプト
+e-Stat API から以下のデータを取得し、shiso_stats_dashboard.html を更新する。
 
-実行方法:
-  pip install requests beautifulsoup4
-  ESTAT_APP_ID=xxxxxxxx python scripts/update_population.py
-
-環境変数:
-  ESTAT_APP_ID  e-Stat APIのアプリケーションID（必須）
+対象データ:
+  - 学校基本調査（小中学校児童生徒数）
+  - 介護保険事業状況報告（要介護認定者数）
+  - 医療施設調査（医療施設数・病床数）
+  - 農林業センサス（農家数・農業就業者数）
 """
 
-import re
-import os
-import sys
 import json
-import requests
-from bs4 import BeautifulSoup
+import os
+import re
+import sys
+import time
 from datetime import datetime
 
-# ================================================================
-#  設定
-# ================================================================
-BASE_URL   = "https://www.city.shiso.lg.jp"
-INDEX_URL  = f"{BASE_URL}/soshiki/shiminseikatsu/shimin/tantojoho/jinkoutokei/index.html"
-ESTAT_APP_ID   = os.environ.get("ESTAT_APP_ID", "")
-ESTAT_STATS_ID = "0003411564"
-AREA_CODE      = "28221"  # 宍粟市
+import requests
 
-# このスクリプトから見たHTMLファイルのパス
-HTML_PATH = os.path.join(os.path.dirname(__file__), "..", "shiso_dashboard.html")
+# ────────────────────────────────────────────────
+# 設定
+# ────────────────────────────────────────────────
+APP_ID      = os.environ["ESTAT_APP_ID"]   # GitHub Secrets に設定済み
+SHISO_AREA  = "28221"                       # 宍粟市
+BASE_URL    = "https://api.e-stat.go.jp/rest/3.0/app/json"
 
-# ================================================================
-#  元号 → 西暦 変換
-# ================================================================
-def era_to_year(era: str, num: int) -> int:
-    return {"令和": 2018, "平成": 1988, "昭和": 1925}.get(era, 0) + num
+# 統計調査コード（e-Stat の調査識別子）
+SURVEY_CODES = {
+    "school":   "00400001",   # 学校基本調査
+    "care":     "00450012",   # 介護保険事業状況報告
+    "medical":  "00450011",   # 医療施設調査
+    "agri":     "00500209",   # 農林業センサス
+}
 
+# ────────────────────────────────────────────────
+# e-Stat API ヘルパー
+# ────────────────────────────────────────────────
+def get_stats_list(stats_code: str, limit: int = 20) -> list[dict]:
+    """調査コードで統計表一覧を取得（新しい順）"""
+    params = {
+        "appId":     APP_ID,
+        "statsCode": stats_code,
+        "cdArea":    SHISO_AREA,
+        "limit":     limit,
+        "updatedDate": "2010",   # 2010年以降
+    }
+    resp = requests.get(f"{BASE_URL}/getStatsList", params=params, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
 
-def parse_date_label(text: str):
-    """'令和8年5月31日現在' → '2026-05'、解析できなければ None"""
-    m = re.search(r"(令和|平成|昭和)(\d+)年(\d+)月", text)
-    if not m:
-        return None
-    year  = era_to_year(m.group(1), int(m.group(2)))
-    month = int(m.group(3))
-    return f"{year:04d}-{month:02d}"
-
-
-# ================================================================
-#  宍粟市HP スクレイピング
-# ================================================================
-def parse_population_table(soup) -> list[dict]:
-    """ページ内のテーブルから月次人口データを抽出"""
-    results = []
-    for table in soup.find_all("table"):
-        rows = table.find_all("tr")
-        for row in rows:
-            cells = row.find_all(["td", "th"])
-            if not cells:
-                continue
-
-            date_str = parse_date_label(cells[0].get_text(strip=True))
-            if not date_str:
-                continue
-
-            # 数値列を抽出
-            nums = []
-            for cell in cells[1:]:
-                raw = cell.get_text(strip=True).replace(",", "").replace("，", "")
-                try:
-                    nums.append(int(raw))
-                except ValueError:
-                    nums.append(None)
-
-            # 列構成: 宍粟市(男,女), 山崎(男,女), 一宮(男,女), 波賀(男,女), 千種(男,女) = 10列
-            # または: 宍粟市計, 山崎計, 一宮計, 波賀計, 千種計 = 5列
-            def safe_sum(a, b):
-                return (a or 0) + (b or 0)
-
-            try:
-                if len(nums) >= 10:
-                    total    = safe_sum(nums[0], nums[1])
-                    yamazaki = safe_sum(nums[2], nums[3])
-                    ichimiya = safe_sum(nums[4], nums[5])
-                    haga     = safe_sum(nums[6], nums[7])
-                    chigusa  = safe_sum(nums[8], nums[9])
-                elif len(nums) >= 5:
-                    total, yamazaki, ichimiya, haga, chigusa = [n or 0 for n in nums[:5]]
-                else:
-                    continue
-
-                if total > 0:
-                    results.append({
-                        "date":     date_str,
-                        "total":    total,
-                        "yamazaki": yamazaki,
-                        "ichimiya": ichimiya,
-                        "haga":     haga,
-                        "chigusa":  chigusa,
-                    })
-            except Exception as e:
-                print(f"  行スキップ ({date_str}): {e}")
-
-    return results
-
-
-def fetch_year_page(url: str) -> list[dict]:
-    """年次ページから月次データを取得"""
-    r = requests.get(url, timeout=20)
-    r.encoding = "utf-8"
-    return parse_population_table(BeautifulSoup(r.text, "html.parser"))
-
-
-def fetch_city_population(existing_dates: set) -> list[dict]:
-    """市HPから既存データにない月のデータをすべて取得"""
-    print("【市HP】インデックスページ取得中...")
-    r = requests.get(INDEX_URL, timeout=20)
-    r.encoding = "utf-8"
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    # リンクから年次ページURLを収集
-    year_page_urls = [INDEX_URL]  # インデックス自体も含む
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if "jinkoutokei" in href and href.endswith(".html") and "index" not in href:
-            full_url = href if href.startswith("http") else BASE_URL + href
-            if full_url not in year_page_urls:
-                year_page_urls.append(full_url)
-
-    print(f"  発見ページ数: {len(year_page_urls)}")
-
-    all_new = []
-    for url in year_page_urls:
-        print(f"  取得: {url}")
-        try:
-            rows = fetch_year_page(url)
-            new_rows = [row for row in rows if row["date"] not in existing_dates]
-            if new_rows:
-                print(f"  → 新規 {len(new_rows)}件: {[r['date'] for r in new_rows]}")
-                all_new.extend(new_rows)
-            else:
-                print(f"  → 新規なし（{len(rows)}件取得済）")
-        except Exception as e:
-            print(f"  エラー ({url}): {e}")
-
-    return all_new
-
-
-# ================================================================
-#  e-Stat API
-# ================================================================
-def fetch_estat_vitals(existing_years: set) -> list[dict]:
-    """e-Stat APIから宍粟市の人口動態データを取得"""
-    if not ESTAT_APP_ID:
-        print("【e-Stat】ESTAT_APP_ID が未設定のためスキップ")
+    result = data.get("GET_STATS_LIST", {})
+    status = result.get("RESULT", {}).get("STATUS", -1)
+    if status != 0:
+        print(f"  [WARN] getStatsList status={status}: {result.get('RESULT',{}).get('ERROR_MSG','')}")
         return []
 
-    print("【e-Stat】人口動態データ取得中...")
-    url = (
-        f"https://api.e-stat.go.jp/rest/3.0/app/json/getStatsData"
-        f"?appId={ESTAT_APP_ID}&lang=J&statsDataId={ESTAT_STATS_ID}"
-        f"&metaGetFlg=N&cntGetFlg=N&cdArea={AREA_CODE}&replaceSpChars=0"
-    )
-    r = requests.get(url, timeout=20)
-    data = r.json()
-
-    values = data["GET_STATS_DATA"]["STATISTICAL_DATA"]["DATA_INF"]["VALUE"]
-    cat_map = {"100": "births", "120": "deaths", "200": "marriages", "210": "divorces"}
-
-    year_data: dict[int, dict] = {}
-    for v in values:
-        cat = v["@cat01"]
-        if cat not in cat_map:
-            continue
-        year = int(str(v["@time"])[:4])
-        raw  = v.get("$", "-")
-        try:
-            val = int(raw) if raw not in ("-", "***", "…", "・") else 0
-        except ValueError:
-            val = 0
-
-        if year not in year_data:
-            year_data[year] = {"year": year, "births": 0, "deaths": 0,
-                               "marriages": 0, "divorces": 0}
-        year_data[year][cat_map[cat]] = val
-
-    new_rows = [v for k, v in sorted(year_data.items()) if k not in existing_years]
-    if new_rows:
-        print(f"  新規年: {[r['year'] for r in new_rows]}")
-    else:
-        print("  新規データなし")
-    return new_rows
+    tables = result.get("DATALIST_INF", {}).get("TABLE_INF", [])
+    if isinstance(tables, dict):
+        tables = [tables]
+    return tables
 
 
-# ================================================================
-#  HTML の読み込み・更新
-# ================================================================
-def parse_monthly_from_html(content: str) -> list[dict]:
-    pattern = (
-        r'\{ date:"(\d{4}-\d{2})", total:(\d+), '
-        r'yamazaki:(\d+), ichimiya:(\d+), haga:(\d+), chigusa:(\d+) \}'
-    )
-    entries = []
-    for m in re.finditer(pattern, content):
-        entries.append({
-            "date":     m.group(1),
-            "total":    int(m.group(2)),
-            "yamazaki": int(m.group(3)),
-            "ichimiya": int(m.group(4)),
-            "haga":     int(m.group(5)),
-            "chigusa":  int(m.group(6)),
-        })
-    return entries
+def get_stats_data(stats_data_id: str) -> dict | None:
+    """statsDataId でデータを取得"""
+    params = {
+        "appId":       APP_ID,
+        "statsDataId": stats_data_id,
+        "cdArea":      SHISO_AREA,
+        "metaGetFlg":  "Y",
+        "cntGetFlg":   "N",
+        "sectionHeaderFlg": "1",
+    }
+    resp = requests.get(f"{BASE_URL}/getStatsData", params=params, timeout=60)
+    resp.raise_for_status()
+    data = resp.json()
 
+    result = data.get("GET_STATS_DATA", {})
+    status = result.get("RESULT", {}).get("STATUS", -1)
+    if status != 0:
+        print(f"  [WARN] getStatsData status={status}")
+        return None
 
-def parse_vitals_from_html(content: str) -> list[dict]:
-    pattern = (
-        r'\{ year:(\d{4}), births:(\d+), deaths:(\d+), '
-        r'marriages:(\d+),\s+divorces:(\d+) \}'
-    )
-    entries = []
-    for m in re.finditer(pattern, content):
-        entries.append({
-            "year":      int(m.group(1)),
-            "births":    int(m.group(2)),
-            "deaths":    int(m.group(3)),
-            "marriages": int(m.group(4)),
-            "divorces":  int(m.group(5)),
-        })
-    return entries
-
-
-def build_monthly_js(entries: list[dict], updated: str) -> str:
-    entries = sorted(entries, key=lambda x: x["date"])
-    lines = [f"// 最終自動更新: {updated}"]
-    lines.append("const MONTHLY_DATA = [")
-    for e in entries:
-        lines.append(
-            f'  {{ date:"{e["date"]}", total:{e["total"]}, '
-            f'yamazaki:{e["yamazaki"]}, ichimiya:{e["ichimiya"]}, '
-            f'haga:{e["haga"]}, chigusa:{e["chigusa"]} }},'
-        )
-    lines.append("];")
-    return "\n".join(lines)
-
-
-def build_vitals_js(entries: list[dict]) -> str:
-    entries = sorted(entries, key=lambda x: x["year"])
-    lines = ["const VITAL_DATA = ["]
-    for e in entries:
-        lines.append(
-            f'  {{ year:{e["year"]}, births:{e["births"]}, deaths:{e["deaths"]}, '
-            f'marriages:{e["marriages"]},  divorces:{e["divorces"]} }},'
-        )
-    lines.append("];")
-    return "\n".join(lines)
-
-
-def replace_js_block(content: str, start_marker: str, end_marker: str,
-                     new_block: str) -> str:
-    """start_marker から end_marker までを new_block に置換"""
-    pattern = re.escape(start_marker) + r".*?" + re.escape(end_marker)
-    replacement = new_block
-    result, n = re.subn(pattern, replacement, content, count=1, flags=re.DOTALL)
-    if n == 0:
-        raise ValueError(f"マーカーが見つかりません: '{start_marker}'")
     return result
 
 
-def update_html(monthly_all: list[dict], vital_all: list[dict]) -> None:
-    with open(HTML_PATH, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    now = datetime.now().strftime("%Y-%m-%d")
-
-    # MONTHLY_DATA を置換
-    new_monthly = build_monthly_js(monthly_all, now)
-    # "// 最終自動更新:" または "const MONTHLY_DATA" から始まり "];" で終わるブロックを置換
-    if "// 最終自動更新:" in content:
-        content = replace_js_block(content,
-            start_marker="// 最終自動更新:",
-            end_marker="];",
-            new_block=new_monthly)
-    else:
-        content = replace_js_block(content,
-            start_marker="const MONTHLY_DATA = [",
-            end_marker="];",
-            new_block=new_monthly)
-
-    # VITAL_DATA を置換
-    new_vitals = build_vitals_js(vital_all)
-    content = replace_js_block(content,
-        start_marker="const VITAL_DATA = [",
-        end_marker="];",
-        new_block=new_vitals)
-
-    with open(HTML_PATH, "w", encoding="utf-8") as f:
-        f.write(content)
-
-    print(f"\nHTML更新完了: {HTML_PATH}")
+def get_title_str(t: dict) -> str:
+    """TITLE フィールドを安全に文字列で返す（str or dict）"""
+    title = t.get("TITLE", "")
+    if isinstance(title, dict):
+        return title.get("$", "")
+    return str(title)
 
 
-# ================================================================
-#  メイン
-# ================================================================
+def find_latest_table(tables: list[dict], keyword: str = "") -> dict | None:
+    """キーワードで絞り込んで最新のテーブルを返す"""
+    if keyword:
+        filtered = [t for t in tables if keyword in t.get("STATISTICS_NAME", "")
+                    or keyword in get_title_str(t)]
+        if filtered:
+            tables = filtered
+
+    # SURVEY_DATE（調査年月）が最大のものを選択
+    def sort_key(t):
+        return t.get("SURVEY_DATE", "0")
+
+    return max(tables, key=sort_key) if tables else None
+
+
+# ────────────────────────────────────────────────
+# 各調査のデータ取得
+# ────────────────────────────────────────────────
+def fetch_school_data() -> dict:
+    """学校基本調査：小中学校の児童生徒数"""
+    print("[学校基本調査] テーブル検索中...")
+    tables = get_stats_list(SURVEY_CODES["school"])
+    time.sleep(1)
+
+    # 小学校・中学校のデータを探す
+    el_table = find_latest_table(tables, "小学校")
+    jh_table = find_latest_table(tables, "中学校")
+
+    result = {"year": None, "elementary": None, "junior_high": None, "source_name": "学校基本調査"}
+
+    for label, table in [("小学校", el_table), ("中学校", jh_table)]:
+        if not table:
+            print(f"  {label}のテーブルが見つかりません")
+            continue
+
+        tid = table["@id"]
+        title = get_title_str(table) or tid
+        survey_date = table.get("SURVEY_DATE", "")
+        print(f"  {label}: {title} ({survey_date})")
+
+        raw = get_stats_data(tid)
+        time.sleep(1)
+        if not raw:
+            continue
+
+        values = raw.get("STATISTICAL_DATA", {}).get("DATA_INF", {}).get("VALUE", [])
+        if isinstance(values, dict):
+            values = [values]
+
+        # 合計（在学者数）を探す
+        total = None
+        for v in values:
+            cat = str(v.get("@cat01", "")) + str(v.get("@cat02", ""))
+            text = str(v.get("@name", "")) + cat
+            if "計" in text or "合計" in text or "総数" in text:
+                try:
+                    total = int(v.get("$", "").replace(",", ""))
+                    break
+                except (ValueError, AttributeError):
+                    pass
+
+        # 合計が見つからなければ最初の数値
+        if total is None and values:
+            try:
+                total = int(values[0].get("$", "").replace(",", ""))
+            except (ValueError, AttributeError):
+                pass
+
+        year = str(survey_date)[:4] if survey_date else None
+        if result["year"] is None:
+            result["year"] = year
+
+        if label == "小学校":
+            result["elementary"] = total
+        else:
+            result["junior_high"] = total
+
+    return result
+
+
+def fetch_care_data() -> dict:
+    """介護保険事業状況報告：要介護認定者数"""
+    print("[介護保険状況報告] テーブル検索中...")
+    tables = get_stats_list(SURVEY_CODES["care"])
+    time.sleep(1)
+
+    result = {"year": None, "certified_total": None, "source_name": "介護保険事業状況報告"}
+
+    table = find_latest_table(tables, "認定")
+    if not table:
+        table = find_latest_table(tables)
+    if not table:
+        print("  テーブルが見つかりません")
+        return result
+
+    tid = table["@id"]
+    title = get_title_str(table) or tid
+    survey_date = table.get("SURVEY_DATE", "")
+    print(f"  使用テーブル: {title} ({survey_date})")
+
+    raw = get_stats_data(tid)
+    time.sleep(1)
+    if not raw:
+        return result
+
+    values = raw.get("STATISTICAL_DATA", {}).get("DATA_INF", {}).get("VALUE", [])
+    if isinstance(values, dict):
+        values = [values]
+
+    total = None
+    for v in values:
+        name = str(v.get("@name", "")) + str(v.get("@cat01", ""))
+        if "合計" in name or "計" in name or "総数" in name or "認定者数" in name:
+            try:
+                total = int(v.get("$", "").replace(",", ""))
+                break
+            except (ValueError, AttributeError):
+                pass
+
+    if total is None and values:
+        try:
+            total = int(values[0].get("$", "").replace(",", ""))
+        except (ValueError, AttributeError):
+            pass
+
+    result["year"] = str(survey_date)[:4] if survey_date else None
+    result["certified_total"] = total
+    return result
+
+
+def fetch_medical_data() -> dict:
+    """医療施設調査：施設数・病床数"""
+    print("[医療施設調査] テーブル検索中...")
+    tables = get_stats_list(SURVEY_CODES["medical"])
+    time.sleep(1)
+
+    result = {
+        "year": None,
+        "hospitals": None,
+        "clinics": None,
+        "beds": None,
+        "source_name": "医療施設調査"
+    }
+
+    table = find_latest_table(tables)
+    if not table:
+        print("  テーブルが見つかりません")
+        return result
+
+    tid = table["@id"]
+    title = get_title_str(table) or tid
+    survey_date = table.get("SURVEY_DATE", "")
+    print(f"  使用テーブル: {title} ({survey_date})")
+
+    raw = get_stats_data(tid)
+    time.sleep(1)
+    if not raw:
+        return result
+
+    values = raw.get("STATISTICAL_DATA", {}).get("DATA_INF", {}).get("VALUE", [])
+    if isinstance(values, dict):
+        values = [values]
+
+    for v in values:
+        name = str(v.get("@name", "")) + str(v.get("@cat01", "")) + str(v.get("@cat02", ""))
+        try:
+            val = int(v.get("$", "").replace(",", ""))
+        except (ValueError, AttributeError):
+            continue
+
+        if "病院" in name and "施設数" in name and result["hospitals"] is None:
+            result["hospitals"] = val
+        elif "診療所" in name and "施設数" in name and result["clinics"] is None:
+            result["clinics"] = val
+        elif "病床数" in name and result["beds"] is None:
+            result["beds"] = val
+
+    result["year"] = str(survey_date)[:4] if survey_date else None
+    return result
+
+
+def fetch_agri_data() -> dict:
+    """農林業センサス：農家数・農業就業人口"""
+    print("[農林業センサス] テーブル検索中...")
+    tables = get_stats_list(SURVEY_CODES["agri"])
+    time.sleep(1)
+
+    result = {
+        "year": None,
+        "farm_households": None,
+        "farmers": None,
+        "source_name": "農林業センサス"
+    }
+
+    table = find_latest_table(tables)
+    if not table:
+        print("  テーブルが見つかりません")
+        return result
+
+    tid = table["@id"]
+    title = get_title_str(table) or tid
+    survey_date = table.get("SURVEY_DATE", "")
+    print(f"  使用テーブル: {title} ({survey_date})")
+
+    raw = get_stats_data(tid)
+    time.sleep(1)
+    if not raw:
+        return result
+
+    values = raw.get("STATISTICAL_DATA", {}).get("DATA_INF", {}).get("VALUE", [])
+    if isinstance(values, dict):
+        values = [values]
+
+    for v in values:
+        name = str(v.get("@name", "")) + str(v.get("@cat01", ""))
+        try:
+            val = int(v.get("$", "").replace(",", ""))
+        except (ValueError, AttributeError):
+            continue
+
+        if "農家数" in name or "農業経営体" in name:
+            if result["farm_households"] is None:
+                result["farm_households"] = val
+        elif "就業者" in name or "従事者" in name:
+            if result["farmers"] is None:
+                result["farmers"] = val
+
+    result["year"] = str(survey_date)[:4] if survey_date else None
+    return result
+
+
+# ────────────────────────────────────────────────
+# HTML 更新
+# ────────────────────────────────────────────────
+HTML_FILE = "shiso_stats_dashboard.html"
+
+
+def load_html() -> str:
+    """既存の HTML を読み込む（なければテンプレートを返す）"""
+    if os.path.exists(HTML_FILE):
+        with open(HTML_FILE, encoding="utf-8") as f:
+            return f.read()
+    return generate_template()
+
+
+def inject_data(html: str, var_name: str, data: dict) -> str:
+    """HTML 内の JS 変数を上書き"""
+    json_str = json.dumps(data, ensure_ascii=False, indent=2)
+    pattern  = rf"(const\s+{re.escape(var_name)}\s*=\s*)(\{{[\s\S]*?\}})(\s*;)"
+    replacement = rf"\g<1>{json_str}\g<3>"
+    new_html = re.sub(pattern, replacement, html)
+    if new_html == html:
+        # 変数が見つからない場合は末尾の </script> の直前に挿入
+        new_html = html.replace(
+            "</script>",
+            f"\nconst {var_name} = {json_str};\n</script>",
+            1,
+        )
+    return new_html
+
+
+def update_timestamp(html: str) -> str:
+    now = datetime.now().strftime("%Y年%m月%d日")
+    return re.sub(
+        r'(<span id="lastUpdated">)([^<]*)(<\/span>)',
+        rf'\g<1>{now}\g<3>',
+        html,
+    )
+
+
+def generate_template() -> str:
+    """HTML テンプレートを生成"""
+    return """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>宍粟市 統計ダッシュボード</title>
+<style>
+  :root { --navy:#1a3a6b; --sky:#2e86c1; --green:#27ae60; --orange:#e67e22; --red:#c0392b; --bg:#f5f7fa; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Hiragino Sans','Meiryo',sans-serif; background:var(--bg); color:#333; }
+  header { background:var(--navy); color:#fff; padding:24px 32px; }
+  header h1 { font-size:1.5rem; }
+  header p  { font-size:.85rem; opacity:.75; margin-top:4px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; padding:28px 32px; }
+  .card { background:#fff; border-radius:10px; padding:20px 24px; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .card-label { font-size:.75rem; font-weight:700; color:var(--sky); letter-spacing:.05em; text-transform:uppercase; }
+  .card-title { font-size:1rem; font-weight:600; margin:4px 0 12px; }
+  .stat-row { display:flex; justify-content:space-between; align-items:baseline; margin:6px 0; font-size:.9rem; }
+  .stat-val  { font-size:1.3rem; font-weight:700; color:var(--navy); }
+  .stat-unit { font-size:.75rem; color:#888; margin-left:2px; }
+  .stat-year { font-size:.72rem; color:#aaa; }
+  .na { color:#ccc; font-size:.85rem; }
+  footer { text-align:center; color:#aaa; font-size:.75rem; padding:24px; }
+  footer a { color:var(--sky); }
+</style>
+</head>
+<body>
+<header>
+  <h1>宍粟市 統計ダッシュボード</h1>
+  <p>最終更新：<span id="lastUpdated">—</span>　　データ出典：政府統計の総合窓口 e-Stat</p>
+</header>
+
+<div class="grid" id="cards"></div>
+
+<footer>
+  データ出典：<a href="https://www.e-stat.go.jp/" target="_blank">e-Stat（政府統計の総合窓口）</a>
+  &nbsp;／&nbsp; 宍粟市（市区町村コード：28221）
+</footer>
+
+<script>
+const SCHOOL_DATA = {};
+const CARE_DATA   = {};
+const MEDICAL_DATA = {};
+const AGRI_DATA   = {};
+
+function val(v, unit) {
+  if (v === null || v === undefined) return '<span class="na">データなし</span>';
+  return `<span class="stat-val">${v.toLocaleString()}</span><span class="stat-unit">${unit}</span>`;
+}
+
+function renderCards() {
+  const cards = [
+    {
+      label: "学校基本調査",
+      color: "#2e86c1",
+      title: "小中学校 児童生徒数",
+      year: SCHOOL_DATA.year,
+      rows: [
+        { name: "小学校", value: val(SCHOOL_DATA.elementary, "人") },
+        { name: "中学校", value: val(SCHOOL_DATA.junior_high, "人") },
+      ]
+    },
+    {
+      label: "介護保険事業状況報告",
+      color: "#27ae60",
+      title: "要介護・要支援認定者数",
+      year: CARE_DATA.year,
+      rows: [
+        { name: "認定者合計", value: val(CARE_DATA.certified_total, "人") },
+      ]
+    },
+    {
+      label: "医療施設調査",
+      color: "#e67e22",
+      title: "市内医療施設",
+      year: MEDICAL_DATA.year,
+      rows: [
+        { name: "病院数",   value: val(MEDICAL_DATA.hospitals, "施設") },
+        { name: "診療所数", value: val(MEDICAL_DATA.clinics, "施設") },
+        { name: "病床数",   value: val(MEDICAL_DATA.beds, "床") },
+      ]
+    },
+    {
+      label: "農林業センサス",
+      color: "#8e44ad",
+      title: "農業経営体・就業者",
+      year: AGRI_DATA.year,
+      rows: [
+        { name: "農業経営体数", value: val(AGRI_DATA.farm_households, "経営体") },
+        { name: "農業就業者数", value: val(AGRI_DATA.farmers, "人") },
+      ]
+    },
+  ];
+
+  const container = document.getElementById("cards");
+  container.innerHTML = cards.map(c => `
+    <div class="card">
+      <div class="card-label" style="color:${c.color}">${c.label}</div>
+      <div class="card-title">${c.title}</div>
+      ${c.rows.map(r => `
+        <div class="stat-row">
+          <span>${r.name}</span>
+          <span>${r.value}</span>
+        </div>
+      `).join("")}
+      ${c.year ? `<div class="stat-year" style="margin-top:8px">調査年：${c.year}年</div>` : ""}
+    </div>
+  `).join("");
+}
+
+renderCards();
+</script>
+</body>
+</html>
+"""
+
+
 def main():
     print("=" * 50)
-    print("宍粟市 人口ダッシュボード 自動更新")
+    print("宍粟市 統計データ自動更新")
     print(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 50)
 
-    with open(HTML_PATH, "r", encoding="utf-8") as f:
-        content = f.read()
+    # 各調査のデータ取得
+    school  = fetch_school_data()
+    care    = fetch_care_data()
+    medical = fetch_medical_data()
+    agri    = fetch_agri_data()
 
-    # 既存データを解析
-    existing_monthly = parse_monthly_from_html(content)
-    existing_monthly_dates = {e["date"] for e in existing_monthly}
-    existing_vitals = parse_vitals_from_html(content)
-    existing_vital_years = {e["year"] for e in existing_vitals}
+    print("\n【取得結果】")
+    print(f"  学校: {school}")
+    print(f"  介護: {care}")
+    print(f"  医療: {medical}")
+    print(f"  農業: {agri}")
 
-    print(f"\n既存 月次データ: {len(existing_monthly)}件 "
-          f"({min(existing_monthly_dates)} 〜 {max(existing_monthly_dates)})")
-    print(f"既存 人口動態データ: {sorted(existing_vital_years)}\n")
+    # HTML 更新
+    html = load_html()
+    html = inject_data(html, "SCHOOL_DATA",  school)
+    html = inject_data(html, "CARE_DATA",    care)
+    html = inject_data(html, "MEDICAL_DATA", medical)
+    html = inject_data(html, "AGRI_DATA",    agri)
+    html = update_timestamp(html)
 
-    # 新規データを取得
-    monthly_new = fetch_city_population(existing_monthly_dates)
-    vital_new   = fetch_estat_vitals(existing_vital_years)
+    with open(HTML_FILE, "w", encoding="utf-8") as f:
+        f.write(html)
 
-    if not monthly_new and not vital_new:
-        print("\n更新データなし。終了します。")
-        return
+    print(f"\n✅ {HTML_FILE} を更新しました")
 
-    # マージして更新
-    monthly_all = existing_monthly + monthly_new
-    vital_all   = existing_vitals + vital_new
-
-    update_html(monthly_all, vital_all)
-
-    print(f"\n  月次データ追加: {len(monthly_new)}件")
-    print(f"  人口動態追加: {len(vital_new)}件")
+    # GitHub Actions のサマリー出力
+    summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_file:
+        with open(summary_file, "a", encoding="utf-8") as f:
+            f.write("## 統計データ更新完了\n\n")
+            f.write(f"| データ | 調査年 | 主要指標 |\n|---|---|---|\n")
+            f.write(f"| 学校基本調査 | {school.get('year','—')} | 小学校{school.get('elementary','—')}人 / 中学校{school.get('junior_high','—')}人 |\n")
+            f.write(f"| 介護保険 | {care.get('year','—')} | 認定者{care.get('certified_total','—')}人 |\n")
+            f.write(f"| 医療施設 | {medical.get('year','—')} | 病院{medical.get('hospitals','—')}・診療所{medical.get('clinics','—')} |\n")
+            f.write(f"| 農林業 | {agri.get('year','—')} | 農業経営体{agri.get('farm_households','—')} |\n")
 
 
 if __name__ == "__main__":
