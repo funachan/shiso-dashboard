@@ -30,31 +30,31 @@ HYOGO_PREF = "28"      # 兵庫県（フォールバック用）
 BASE_URL   = "https://api.e-stat.go.jp/rest/3.0/app/json"
 
 # 各調査のキーワード検索設定
-# searchWord: テーブル一覧を取得するキーワード
-# city_kw:    市区町村レベルのテーブルを絞り込むキーワード
+# searchWord: e-Stat getStatsList の AND 検索（単語数を絞ること！）
+# city_kw:    ローカルで市区町村レベルを絞り込むキーワード
 SURVEY_SEARCHES = {
     "school_el": {
-        "searchWord": "学校基本調査 小学校 在学者数 市区町村",
+        "searchWord": "学校基本調査 小学校",
         "city_kw":    "市区町村",
         "fallback_kw":"小学校",
     },
     "school_jh": {
-        "searchWord": "学校基本調査 中学校 在学者数 市区町村",
+        "searchWord": "学校基本調査 中学校",
         "city_kw":    "市区町村",
         "fallback_kw":"中学校",
     },
     "care": {
-        "searchWord": "介護保険事業状況報告 要介護認定 市区町村",
+        "searchWord": "介護保険",
         "city_kw":    "市区町村",
         "fallback_kw":"認定",
     },
     "medical": {
-        "searchWord": "医療施設調査 診療所 市区町村",
+        "searchWord": "医療施設調査",
         "city_kw":    "市区町村",
         "fallback_kw":"診療所",
     },
     "agri": {
-        "searchWord": "農林業センサス 農業経営体数 市区町村",
+        "searchWord": "農林業センサス",
         "city_kw":    "市区町村",
         "fallback_kw":"農業経営体",
     },
@@ -64,7 +64,7 @@ SURVEY_SEARCHES = {
 # ────────────────────────────────────────────────
 # e-Stat API ヘルパー
 # ────────────────────────────────────────────────
-def search_tables(search_word: str, limit: int = 10) -> list[dict]:
+def search_tables(search_word: str, limit: int = 50) -> list[dict]:
     """キーワードで統計表一覧を検索"""
     params = {
         "appId":       APP_ID,
