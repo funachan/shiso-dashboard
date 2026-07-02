@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>宍粟市 統計ダッシュボード</title>
+<style>
+  :root { --navy:#1a3a6b; --sky:#2e86c1; --green:#27ae60; --orange:#e67e22; --red:#c0392b; --bg:#f5f7fa; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Hiragino Sans','Meiryo',sans-serif; background:var(--bg); color:#333; }
+  header { background:var(--navy); color:#fff; padding:24px 32px; }
+  header h1 { font-size:1.5rem; }
+  header p  { font-size:.85rem; opacity:.75; margin-top:4px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; padding:28px 32px; }
+  .card { background:#fff; border-radius:10px; padding:20px 24px; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .card-label { font-size:.75rem; font-weight:700; color:var(--sky); letter-spacing:.05em; text-transform:uppercase; }
+  .card-title { font-size:1rem; font-weight:600; margin:4px 0 12px; }
+  .stat-row { display:flex; justify-content:space-between; align-items:baseline; margin:6px 0; font-size:.9rem; }
+  .stat-val  { font-size:1.3rem; font-weight:700; color:var(--navy); }
+  .stat-unit { font-size:.75rem; color:#888; margin-left:2px; }
+  .stat-year { font-size:.72rem; color:#aaa; }
+  .na { color:#ccc; font-size:.85rem; }
+  footer { text-align:center; color:#aaa; font-size:.75rem; padding:24px; }
+  footer a { color:var(--sky); }
+</style>
+</head>
+<body>
+<header>
+  <h1>宍粟市 統計ダッシュボード</h1>
+  <p>最終更新：<span id="lastUpdated">2026年07月02日</span>　　データ出典：政府統計の総合窓口 e-Stat</p>
+</header>
+
+<div class="grid" id="cards"></div>
+
+<footer>
+  データ出典：<a href="https://www.e-stat.go.jp/" target="_blank">e-Stat（政府統計の総合窓口）</a>
+  &nbsp;／&nbsp; 宍粟市（市区町村コード：28221）
+</footer>
+
+<script>
+const SCHOOL_DATA = {
+  "year": null,
+  "elementary": null,
+  "junior_high": null,
+  "source_name": "学校基本調査"
+};
+const CARE_DATA   = {
+  "year": null,
+  "certified_total": null,
+  "source_name": "介護保険事業状況報告"
+};
+const MEDICAL_DATA = {
+  "year": null,
+  "hospitals": null,
+  "clinics": null,
+  "beds": null,
+  "source_name": "医療施設調査"
+};
+const AGRI_DATA   = {
+  "year": null,
+  "farm_households": null,
+  "farmers": null,
+  "source_name": "農林業センサス"
+};
+
+function val(v, unit) {
+  if (v === null || v === undefined) return '<span class="na">データなし</span>';
+  return `<span class="stat-val">${v.toLocaleString()}</span><span class="stat-unit">${unit}</span>`;
+}
+
+function renderCards() {
+  const cards = [
+    {
+      label: "学校基本調査",
+      color: "#2e86c1",
+      title: "小中学校 児童生徒数",
+      year: SCHOOL_DATA.year,
+      rows: [
+        { name: "小学校", value: val(SCHOOL_DATA.elementary, "人") },
+        { name: "中学校", value: val(SCHOOL_DATA.junior_high, "人") },
+      ]
+    },
+    {
+      label: "介護保険事業状況報告",
+      color: "#27ae60",
+      title: "要介護・要支援認定者数",
+      year: CARE_DATA.year,
+      rows: [
+        { name: "認定者合計", value: val(CARE_DATA.certified_total, "人") },
+      ]
+    },
+    {
+      label: "医療施設調査",
+      color: "#e67e22",
+      title: "市内医療施設",
+      year: MEDICAL_DATA.year,
+      rows: [
+        { name: "病院数",   value: val(MEDICAL_DATA.hospitals, "施設") },
+        { name: "診療所数", value: val(MEDICAL_DATA.clinics, "施設") },
+        { name: "病床数",   value: val(MEDICAL_DATA.beds, "床") },
+      ]
+    },
+    {
+      label: "農林業センサス",
+      color: "#8e44ad",
+      title: "農業経営体・就業者",
+      year: AGRI_DATA.year,
+      rows: [
+        { name: "農業経営体数", value: val(AGRI_DATA.farm_households, "経営体") },
+        { name: "農業就業者数", value: val(AGRI_DATA.farmers, "人") },
+      ]
+    },
+  ];
+
+  const container = document.getElementById("cards");
+  container.innerHTML = cards.map(c => `
+    <div class="card">
+      <div class="card-label" style="color:${c.color}">${c.label}</div>
+      <div class="card-title">${c.title}</div>
+      ${c.rows.map(r => `
+        <div class="stat-row">
+          <span>${r.name}</span>
+          <span>${r.value}</span>
+        </div>
+      `).join("")}
+      ${c.year ? `<div class="stat-year" style="margin-top:8px">調査年：${c.year}年</div>` : ""}
+    </div>
+  `).join("");
+}
+
+renderCards();
+</script>
+</body>
+</html>
