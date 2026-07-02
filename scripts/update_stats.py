@@ -34,38 +34,44 @@ SHISO_AREA = "28221"   # 宍粟市
 HYOGO_PREF = "28"      # 兵庫県（フォールバック）
 BASE_URL   = "https://api.e-stat.go.jp/rest/3.0/app/json"
 
+# ラベル検索用の地名ヒント（cat02ラベルに市区町村コードが格納されるテーブル向け）
+# 市区町村コードの数字がラベルに別の意味で現れる場合があるため、
+# 地名で確実に特定する
+AREA_NAME_HINTS = {
+    SHISO_AREA: "宍粟",  # 宍粟市
+    HYOGO_PREF: "兵庫",  # 兵庫県
+}
+
 SURVEY_SEARCHES = {
     # 学校基本調査: statsCode + searchWord="市町村別集計" で市区町村レベルテーブルを直接検索
-    # title_kw でタイトルに学校種別が含まれるテーブルを優先（幼稚園テーブルを除外）
-    # searchWord で学校種別を絞り込み、title_kw で「児童数」「生徒数」テーブルを優先
     "school_el": {
         "searchWord": "市町村別集計 小学校",
         "statsCode":  "00400001",
         "city_kw":    "市町村",
-        "title_kw":   "児童数",     # 「学年別児童数」テーブルを優先
+        "title_kw":   "児童数",
         "label_kw":   ["計", "合計"],
     },
     "school_jh": {
         "searchWord": "市町村別集計 中学校",
         "statsCode":  "00400001",
         "city_kw":    "市町村",
-        "title_kw":   "生徒数",     # 「編制方式別生徒数」テーブルを優先
+        "title_kw":   "生徒数",
         "label_kw":   ["計", "合計"],
     },
-    # 介護保険: 1語で検索
+    # 介護保険
     "care": {
         "searchWord": "要介護認定",
         "city_kw":    "市区町村",
         "label_kw":   ["合計", "総数", "認定者", "要介護"],
     },
-    # 医療施設: 宍粟市に病院がない可能性があるため第２表（一般診療所）を優先
+    # 医療施設: 第２表（一般診療所）を優先
     "medical": {
         "searchWord": "医療施設 市区町村",
         "city_kw":    "市区町村",
         "title_kw":   "一般診療所",
         "label_kw":   ["一般診療所", "合計", "総数"],
     },
-    # 農林業センサス: 地方別テーブルが返るため近畿地方テーブルを狙う
+    # 農林業センサス
     "agri": {
         "searchWord": "農業経営体 近畿",
         "statsCode":  "00500209",
@@ -80,11 +86,7 @@ SURVEY_SEARCHES = {
 # ────────────────────────────────────────────────
 def search_tables(search_word: str, limit: int = 30, cd_area: str = None,
                   stats_code: str = None) -> list[dict]:
-    """キーワードで統計表一覧を検索。stats_code で調査を絞込み、cd_area で地域フィルタ。"""
-    params = {
-        "appId":      APP_ID,
-        "limit":      limit,
-    }
+    params = {"appId": APP_ID, "limit": limit}
     if search_word:
         params["searchWord"] = search_word
     if stats_code:
@@ -101,18 +103,14 @@ def search_tables(search_word: str, limit: int = 30, cd_area: str = None,
         return []
 
     result = data.get("GET_STATS_LIST", {})
-    status = result.get("RESULT", {}).get("STATUS", -1)
-    if status != 0:
-        return []  # データなし
+    if result.get("RESULT", {}).get("STATUS", -1) != 0:
+        return []
 
     tables = result.get("DATALIST_INF", {}).get("TABLE_INF", [])
-    if isinstance(tables, dict):
-        tables = [tables]
-    return tables
+    return [tables] if isinstance(tables, dict) else tables
 
 
 def get_stats_data(stats_data_id: str, area: str = None) -> dict | None:
-    """statsDataId でデータを取得。areaで地域フィルタ。"""
     params = {
         "appId":       APP_ID,
         "statsDataId": stats_data_id,
@@ -131,8 +129,7 @@ def get_stats_data(stats_data_id: str, area: str = None) -> dict | None:
         return None
 
     result = data.get("GET_STATS_DATA", {})
-    status = result.get("RESULT", {}).get("STATUS", -1)
-    if status != 0:
+    if result.get("RESULT", {}).get("STATUS", -1) != 0:
         return None
     return result
 
@@ -149,10 +146,7 @@ def sort_key(t: dict) -> str:
 
 
 def parse_class_inf(raw: dict) -> dict:
-    """
-    CLASS_INF から (dim_id, code) → label のマッピングを返す。
-    例: {("cat01", "001"): "病院", ("area", "28221"): "宍粟市", ...}
-    """
+    """CLASS_INF から (dim_id, code) → label のマッピングを返す。"""
     stat_data = raw.get("STATISTICAL_DATA", {})
     class_objs = stat_data.get("CLASS_INF", {}).get("CLASS_OBJ", [])
     if isinstance(class_objs, dict):
@@ -165,41 +159,23 @@ def parse_class_inf(raw: dict) -> dict:
         if isinstance(classes, dict):
             classes = [classes]
         for c in classes:
-            code  = c.get("@code", "")
-            label = c.get("@name", "")
-            mapping[(dim_id, code)] = label
-
+            mapping[(dim_id, c.get("@code", ""))] = c.get("@name", "")
     return mapping
 
 
 def extract_value(raw: dict, target_area: str, label_keywords: list[str]) -> tuple[int | None, str | None]:
-    """
-    e-Stat API レスポンスから値を正しく抽出する。
-
-    1. CLASS_INF をパースしてコード→ラベル変換テーブルを作成
-    2. target_area (例: "28221") の VALUE に絞り込む
-    3. label_keywords にマッチするカテゴリの値を返す
-    4. マッチしなければ最初の有効な数値を返す
-
-    Returns: (value_int, time_str) または (None, None)
-    """
     stat_data = raw.get("STATISTICAL_DATA", {})
-
-    # CLASS_INF パース
     class_map = parse_class_inf(raw)
 
-    # area次元のコードリスト
     area_codes = {k[1] for k, v in class_map.items() if k[0] == "area"}
-    has_target = target_area in area_codes
     if area_codes:
+        has_target = target_area in area_codes
         print(f"    エリア次元: {len(area_codes)}件 | {target_area}({('宍粟市' if target_area==SHISO_AREA else '兵庫県')})含む: {has_target}")
 
-    # VALUES 取得
     values = stat_data.get("DATA_INF", {}).get("VALUE", [])
     if isinstance(values, dict):
         values = [values]
 
-    # target_area でフィルタ
     area_filtered = [v for v in values if v.get("@area") == target_area]
     if area_filtered:
         values = area_filtered
@@ -211,9 +187,7 @@ def extract_value(raw: dict, target_area: str, label_keywords: list[str]) -> tup
             print(f"    → エリア次元なし（地域別集計表でない可能性）")
         return None, None
 
-    # カテゴリラベルでマッチング
     for v in values:
-        # このVALUEの全カテゴリのラベルを結合
         cat_labels = ""
         for dim in ["cat01", "cat02", "cat03", "cat04"]:
             code = v.get(f"@{dim}", "")
@@ -221,16 +195,14 @@ def extract_value(raw: dict, target_area: str, label_keywords: list[str]) -> tup
                 cat_labels += class_map.get((dim, code), "")
 
         for kw in label_keywords:
-            if kw in cat_labels or not cat_labels:  # カテゴリなしテーブルは全て対象
+            if kw in cat_labels or not cat_labels:
                 try:
                     val = str(v.get("$", "")).strip()
                     if val and val not in ("-", "***", "X", "…", ""):
-                        time_code = v.get("@time", "")
-                        return int(val.replace(",", "")), time_code
+                        return int(val.replace(",", "")), v.get("@time", "")
                 except (ValueError, AttributeError):
                     pass
 
-    # キーワードマッチなし → 最初の有効値
     for v in values:
         try:
             val = str(v.get("$", "")).strip()
@@ -243,20 +215,16 @@ def extract_value(raw: dict, target_area: str, label_keywords: list[str]) -> tup
 
 
 def find_best_table(tables: list[dict], city_kw: str, title_kw: str = None) -> dict | None:
-    """市区町村レベルのテーブルを優先して選択。title_kw でタイトルをさらに絞り込む。"""
     city_tables = [
         t for t in tables
         if city_kw in t.get("STATISTICS_NAME", "") or city_kw in get_title_str(t)
     ]
-    # title_kw でタイトルフィルタ（str または list）
     if title_kw and city_tables:
         kws = [title_kw] if isinstance(title_kw, str) else list(title_kw)
-        # 全キーワードが含まれるテーブルを優先
         all_match = [t for t in city_tables if all(kw in get_title_str(t) for kw in kws)]
         if all_match:
             city_tables = all_match
         else:
-            # 一部でもマッチするものにフォールバック
             any_match = [t for t in city_tables if any(kw in get_title_str(t) for kw in kws)]
             if any_match:
                 city_tables = any_match
@@ -297,7 +265,6 @@ def print_found_tables(tables: list[dict], n: int = 5) -> None:
 
 
 def try_fetch(table: dict, target_area: str, label_kw: list[str]) -> tuple[int | None, str | None]:
-    """テーブルからデータ取得を試みる"""
     tid = table["@id"]
     raw = get_stats_data(tid, area=target_area)
     time.sleep(1)
@@ -307,21 +274,11 @@ def try_fetch(table: dict, target_area: str, label_kw: list[str]) -> tuple[int |
 
 
 def fetch_with_fallback(cfg: dict, search_kw: str) -> tuple[int | None, str | None, str]:
-    """
-    2段階でテーブルを探してデータ取得:
-    1. cdArea=28221 付きでテーブル検索（市区町村レベル優先）
-    2. cdArea なしでテーブル検索
-    3. 宍粟市レベルで取得、失敗したら兵庫県レベルで取得
-    Returns: (value, time_period, data_level)
-    """
     sc = cfg.get("statsCode")
+    title_kw = cfg.get("title_kw")
 
-    # Phase 1: 宍粟市コード付きでテーブル検索
     tables = search_tables(search_kw, cd_area=SHISO_AREA, stats_code=sc)
     time.sleep(1)
-    source_level = "city"
-
-    title_kw = cfg.get("title_kw")
 
     if tables:
         print(f"  [Phase1] cdArea=28221 付き → {len(tables)}件")
@@ -330,9 +287,8 @@ def fetch_with_fallback(cfg: dict, search_kw: str) -> tuple[int | None, str | No
         if table:
             val, t = try_fetch(table, SHISO_AREA, cfg["label_kw"])
             if val is not None:
-                return val, t, source_level
+                return val, t, "city"
 
-    # Phase 2: cdArea なしでテーブル検索
     tables = search_tables(search_kw, stats_code=sc)
     time.sleep(1)
     if not tables:
@@ -345,12 +301,10 @@ def fetch_with_fallback(cfg: dict, search_kw: str) -> tuple[int | None, str | No
     if not table:
         return None, None, ""
 
-    # まず宍粟市で試みる
     val, t = try_fetch(table, SHISO_AREA, cfg["label_kw"])
     if val is not None:
         return val, t, "city"
 
-    # 兵庫県でフォールバック
     print(f"  → 宍粟市データなし。兵庫県(28)でフォールバック")
     val, t = try_fetch(table, HYOGO_PREF, cfg["label_kw"])
     if val is not None:
@@ -390,32 +344,26 @@ def fetch_care_data() -> dict:
     """
     介護保険事業状況報告から要介護・要支援認定者数を取得する。
 
-    e-Stat APIでの市区町村別認定者数の取得を複数のキーワードで試みる。
-    いずれも失敗した場合は certified_total=None を返す（HTMLで"データ未提供"表示）。
+    e-Stat APIでの市区町村別認定者数の取得を複数キーワードで試みる。
+    いずれも失敗した場合は certified_total=None を返す（HTMLで"データなし"表示）。
     """
     result = {"year": None, "certified_total": None,
               "source_name": "介護保険事業状況報告", "data_level": ""}
 
-    # 複数の検索キーワードを順番に試みる
-    # 介護保険事業状況報告の市区町村別テーブルを探す
     search_attempts = [
-        # (searchWord, statsCode, city_kw)
-        ("介護保険 市区町村 認定者",   None,         "市区町村"),
-        ("介護保険事業 市区町村",       None,         "市区町村"),
-        ("要介護認定者数 市区町村",     None,         "市区町村"),
-        ("要介護認定",                  None,         "市区町村"),  # 従来のキーワード
+        "介護保険 市区町村 認定者",
+        "介護保険事業 市区町村",
+        "要介護認定者数 市区町村",
+        "要介護認定",   # 従来キーワード
     ]
 
-    for search_word, stats_code, city_kw in search_attempts:
+    for search_word in search_attempts:
         print(f"\n[介護保険] 検索: {search_word}")
         cfg_attempt = {
             "searchWord": search_word,
-            "city_kw":    city_kw,
+            "city_kw":    "市区町村",
             "label_kw":   ["合計", "総数", "認定者", "要介護"],
         }
-        if stats_code:
-            cfg_attempt["statsCode"] = stats_code
-
         val, t, level = fetch_with_fallback(cfg_attempt, search_word)
         if val is not None:
             result["year"]            = str(t)[:4] if t else None
@@ -432,10 +380,15 @@ def fetch_medical_data() -> dict:
     """
     医療施設調査から市内の診療所数・病院数を取得する。
 
-    【注意】このテーブルは @area 次元がなく、cat02 に市区町村コードがラベルとして
-    格納されている（例: cat02 code='01020', label='01202 函館市'）。
-    そのため、全データ取得後に CLASS_INF の cat02 ラベルから宍粟市(28221)に
-    対応するコードを探してフィルタする。
+    【テーブル構造の注意】
+    このテーブルは @area 次元がなく、cat02 にラベル形式で市区町村情報が格納されている。
+    例: cat02 code='01020', label='01202 函館市'
+    ラベルの先頭数字は市区町村コード。
+
+    【マッチング方針】
+    数字コードでのラベル検索は他市のコードが混入する誤マッチが起きるため、
+    AREA_NAME_HINTS（地名文字列）でラベルを検索する。
+    例: SHISO_AREA → "宍粟" を含むラベルを探す
     """
     result = {"year": None, "hospitals": None, "clinics": None, "beds": None,
               "source_name": "医療施設調査", "data_level": ""}
@@ -460,7 +413,7 @@ def fetch_medical_data() -> dict:
 
     tid = table["@id"]
 
-    # ── 全データ取得（area 指定なし）──
+    # 全データ取得（area 指定なし）
     raw_all = get_stats_data(tid, area=None)
     time.sleep(1)
     if not raw_all:
@@ -472,7 +425,7 @@ def fetch_medical_data() -> dict:
     if isinstance(all_values, dict):
         all_values = [all_values]
 
-    # ── CLASS_INF の全次元を確認（デバッグ）──
+    # CLASS_INF の全次元を確認（デバッグ）
     class_objs = stat_data_all.get("CLASS_INF", {}).get("CLASS_OBJ", [])
     if isinstance(class_objs, dict):
         class_objs = [class_objs]
@@ -481,16 +434,17 @@ def fetch_medical_data() -> dict:
         classes = obj.get("CLASS", [])
         if isinstance(classes, dict):
             classes = [classes]
-        has_shiso_code  = SHISO_AREA in {c.get("@code", "") for c in classes}
-        has_shiso_label = any(SHISO_AREA in c.get("@name", "") or "宍粟" in c.get("@name", "")
-                              for c in classes)
+        has_shiso_name = any("宍粟" in c.get("@name", "") for c in classes)
         sample = [(c.get("@code"), c.get("@name", "")) for c in classes[:3]]
-        print(f"  [DEBUG] {dim_id}: code含む={has_shiso_code} | label含む={has_shiso_label} | サンプル={sample}")
+        print(f"  [DEBUG] {dim_id}: 宍粟ラベル含む={has_shiso_name} | サンプル={sample}")
 
     def find_area_values(target_area: str) -> tuple[list, str]:
         """
         target_area に対応する VALUE リストと使用した次元名を返す。
-        優先順: @area → cat02ラベル → cat01ラベル → cat03ラベル
+
+        検索優先順:
+          1. @area での直接マッチ
+          2. AREA_NAME_HINTS の地名でラベルを検索（cat02 → cat01 → cat03 の順）
         """
         # 方法1: @area で直接フィルタ
         filtered = [v for v in all_values if v.get("@area") == target_area]
@@ -498,25 +452,18 @@ def fetch_medical_data() -> dict:
             print(f"  → @area={target_area} で発見: {len(filtered)}件")
             return filtered, "area"
 
-        # 方法2: カテゴリ次元のラベルにtarget_areaが含まれるコードを探す
-        # 医療施設調査では cat02 にラベル形式で市区町村コードが入る
-        # 例: code="01020" label="01202 函館市" → ラベルに "01202" が含まれる
+        # 方法2: 地名ヒントでラベル検索
+        hint = AREA_NAME_HINTS.get(target_area, "")
+        if not hint:
+            return [], ""
+
         for dim_id in ["cat02", "cat01", "cat03"]:
             target_code = None
             for (dim, code), label in class_map_all.items():
-                if dim != dim_id:
-                    continue
-                # ラベルに target_area が含まれる（"28221 宍粟市" 形式）
-                # または target_area == "28" の場合は "28 兵庫県" 形式を探す
-                if target_area in label:
-                    # 誤マッチを避けるため、前後が数字または空白かを確認
-                    # 例: "28" が "28221" にマッチしないよう、前後チェック
-                    idx = label.find(target_area)
-                    after = label[idx + len(target_area):idx + len(target_area) + 1]
-                    if after in ("", " ", "　", "　") or not after.isdigit():
-                        target_code = code
-                        print(f"  [DEBUG] {target_area} を @{dim_id}={code} (label='{label}') で発見")
-                        break
+                if dim == dim_id and hint in label:
+                    target_code = code
+                    print(f"  [DEBUG] '{hint}' を @{dim_id}={code} (label='{label}') で発見")
+                    break
             if target_code is not None:
                 filtered = [v for v in all_values if v.get(f"@{dim_id}") == target_code]
                 if filtered:
@@ -525,7 +472,7 @@ def fetch_medical_data() -> dict:
 
         return [], ""
 
-    # ── 宍粟市優先 → 兵庫県フォールバック ──
+    # 宍粟市優先 → 兵庫県フォールバック
     for area_target, level_name, area_name in [
         (SHISO_AREA, "city", "宍粟市"),
         (HYOGO_PREF, "pref", "兵庫県"),
@@ -540,7 +487,6 @@ def fetch_medical_data() -> dict:
         result["data_level"] = level_name
         result["year"] = str(area_filtered[0].get("@time", ""))[:4] or None
 
-        # 病院数・診療所数・病床数を探す
         for v in area_filtered:
             cat_labels = "".join(
                 class_map_all.get((dim, v.get(f"@{dim}", "")), "")
