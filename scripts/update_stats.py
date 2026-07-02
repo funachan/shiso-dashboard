@@ -36,36 +36,37 @@ BASE_URL   = "https://api.e-stat.go.jp/rest/3.0/app/json"
 
 SURVEY_SEARCHES = {
     # 学校基本調査: statsCode + searchWord="市町村別集計" で市区町村レベルテーブルを直接検索
+    # title_kw でタイトルに学校種別が含まれるテーブルを優先（幼稚園テーブルを除外）
     "school_el": {
         "searchWord": "市町村別集計",
         "statsCode":  "00400001",
         "city_kw":    "市町村",
-        "label_kw":   ["小学校", "在学者", "合計"],
+        "title_kw":   "小学校",
+        "label_kw":   ["在学者", "合計"],
     },
     "school_jh": {
         "searchWord": "市町村別集計",
         "statsCode":  "00400001",
         "city_kw":    "市町村",
-        "label_kw":   ["中学校", "在学者", "合計"],
+        "title_kw":   "中学校",
+        "label_kw":   ["在学者", "合計"],
     },
-    # 介護保険: statsCode で直接検索
+    # 介護保険: statsCode なし + searchWord で検索（statsCode=00450396 は存在しないため）
     "care": {
-        "searchWord": "市区町村",
-        "statsCode":  "00450396",   # 介護保険事業状況報告
+        "searchWord": "介護保険 市区町村",
         "city_kw":    "市区町村",
-        "label_kw":   ["合計", "総数", "認定者"],
+        "label_kw":   ["合計", "総数", "認定者", "要介護"],
     },
-    # 医療施設: statsCode で直接検索
+    # 医療施設: statsCode なし + searchWord で検索（statsCode=00450011 は人口動態統計のため）
     "medical": {
-        "searchWord": "市区町村",
-        "statsCode":  "00450011",   # 医療施設調査
+        "searchWord": "医療施設 市区町村",
         "city_kw":    "市区町村",
         "label_kw":   ["合計", "総数"],
     },
-    # 農林業センサス: statsCode で直接検索
+    # 農林業センサス: statsCode は農山村地域調査も含む広い範囲のため searchWord を絞り込む
     "agri": {
-        "searchWord": "市区町村",
-        "statsCode":  "00500209",   # 農林業センサス
+        "searchWord": "農業経営体 市区町村",
+        "statsCode":  "00500209",
         "city_kw":    "市区町村",
         "label_kw":   ["合計", "総数", "農業経営体"],
     },
@@ -239,12 +240,20 @@ def extract_value(raw: dict, target_area: str, label_keywords: list[str]) -> tup
     return None, None
 
 
-def find_best_table(tables: list[dict], city_kw: str) -> dict | None:
-    """市区町村レベルのテーブルを優先して選択"""
+def find_best_table(tables: list[dict], city_kw: str, title_kw: str = None) -> dict | None:
+    """市区町村レベルのテーブルを優先して選択。title_kw でタイトルをさらに絞り込む。"""
     city_tables = [
         t for t in tables
         if city_kw in t.get("STATISTICS_NAME", "") or city_kw in get_title_str(t)
     ]
+    # title_kw でタイトルフィルタ（幼稚園/小学校/中学校などの種別絞り込みに使用）
+    if title_kw and city_tables:
+        title_filtered = [t for t in city_tables if title_kw in get_title_str(t)]
+        if title_filtered:
+            city_tables = title_filtered
+        else:
+            print(f"  （title_kw='{title_kw}' に一致するテーブルなし、全市区町村テーブルを対象）")
+
     if city_tables:
         best = max(city_tables, key=sort_key)
         print(f"  ★市区町村テーブル: {get_title_str(best)} [{best.get('@id')}]")
@@ -263,15 +272,18 @@ def print_found_tables(tables: list[dict], n: int = 5) -> None:
     city_tables = [
         t for t in tables
         if "市区町村" in t.get("STATISTICS_NAME", "") or "市区町村" in get_title_str(t)
+        or "市町村" in t.get("STATISTICS_NAME", "") or "市町村" in get_title_str(t)
     ]
     if city_tables:
         print(f"  ★市区町村候補: {len(city_tables)}件")
         for t in city_tables[:n]:
-            print(f"    ID={t.get('@id','—')} | {t.get('SURVEY_DATE','')} | {get_title_str(t)[:70]}")
+            sc = t.get("STAT_CODE", t.get("GOV_ORG", {}).get("@code", "—"))
+            print(f"    ID={t.get('@id','—')} | {t.get('SURVEY_DATE','')} | {sc} | {get_title_str(t)[:60]}")
     else:
         print(f"  （市区町村テーブルなし）先頭{n}件:")
         for t in tables[:n]:
-            print(f"    ID={t.get('@id','—')} | {t.get('SURVEY_DATE','')} | {get_title_str(t)[:70]}")
+            sc = t.get("STAT_CODE", t.get("GOV_ORG", {}).get("@code", "—"))
+            print(f"    ID={t.get('@id','—')} | {t.get('SURVEY_DATE','')} | {sc} | {get_title_str(t)[:60]}")
 
 
 def try_fetch(table: dict, target_area: str, label_kw: list[str]) -> tuple[int | None, str | None]:
@@ -299,10 +311,12 @@ def fetch_with_fallback(cfg: dict, search_kw: str) -> tuple[int | None, str | No
     time.sleep(1)
     source_level = "city"
 
+    title_kw = cfg.get("title_kw")
+
     if tables:
         print(f"  [Phase1] cdArea=28221 付き → {len(tables)}件")
         print_found_tables(tables)
-        table = find_best_table(tables, cfg["city_kw"])
+        table = find_best_table(tables, cfg["city_kw"], title_kw)
         if table:
             val, t = try_fetch(table, SHISO_AREA, cfg["label_kw"])
             if val is not None:
@@ -317,7 +331,7 @@ def fetch_with_fallback(cfg: dict, search_kw: str) -> tuple[int | None, str | No
 
     print(f"  [Phase2] cdArea なし → {len(tables)}件")
     print_found_tables(tables)
-    table = find_best_table(tables, cfg["city_kw"])
+    table = find_best_table(tables, cfg["city_kw"], title_kw)
     if not table:
         return None, None, ""
 
@@ -396,7 +410,7 @@ def fetch_medical_data() -> dict:
         return result
 
     print_found_tables(tables)
-    table = find_best_table(tables, cfg["city_kw"])
+    table = find_best_table(tables, cfg["city_kw"], cfg.get("title_kw"))
     if not table:
         return result
 
