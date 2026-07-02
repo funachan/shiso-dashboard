@@ -129,7 +129,7 @@ def get_title_str(t: dict) -> str:
 def find_best_table(tables: list[dict], city_kw: str, fallback_kw: str) -> dict | None:
     """市区町村レベルのテーブルを優先して選択。なければキーワードで絞込み"""
     def sort_key(t):
-        return t.get("SURVEY_DATE", "0")
+        return str(t.get("SURVEY_DATE", "0"))
 
     # まず市区町村レベルを探す
     city_tables = [
