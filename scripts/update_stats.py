@@ -37,23 +37,22 @@ BASE_URL   = "https://api.e-stat.go.jp/rest/3.0/app/json"
 SURVEY_SEARCHES = {
     # 学校基本調査: statsCode + searchWord="市町村別集計" で市区町村レベルテーブルを直接検索
     # title_kw でタイトルに学校種別が含まれるテーブルを優先（幼稚園テーブルを除外）
+    # searchWord に学校種別を含めて特別支援学校テーブルを除外
     "school_el": {
-        "searchWord": "市町村別集計 在学者",   # 在学者テーブルに直接絞り込む
+        "searchWord": "市町村別集計 小学校",
         "statsCode":  "00400001",
         "city_kw":    "市町村",
-        "title_kw":   "小学校",
         "label_kw":   ["在学者", "合計"],
     },
     "school_jh": {
-        "searchWord": "市町村別集計 在学者",   # 在学者テーブルに直接絞り込む
+        "searchWord": "市町村別集計 中学校",
         "statsCode":  "00400001",
         "city_kw":    "市町村",
-        "title_kw":   "中学校",
         "label_kw":   ["在学者", "合計"],
     },
-    # 介護保険: 認定者数のキーワードで検索
+    # 介護保険: 1語で検索
     "care": {
-        "searchWord": "要介護認定者数",
+        "searchWord": "要介護認定",
         "city_kw":    "市区町村",
         "label_kw":   ["合計", "総数", "認定者", "要介護"],
     },
@@ -425,18 +424,33 @@ def fetch_medical_data() -> dict:
 
     tid = table["@id"]
 
-    # デバッグ: cdAreaなしで全データ取得して @area コードを確認
+    # デバッグ: cdAreaなしでメタデータのみ取得して CLASS_OBJ を確認
     raw_all = get_stats_data(tid, area=None)
     time.sleep(1)
     if raw_all:
-        all_values = raw_all.get("STATISTICAL_DATA", {}).get("DATA_INF", {}).get("VALUE", [])
+        stat_data_all = raw_all.get("STATISTICAL_DATA", {})
+        class_objs = stat_data_all.get("CLASS_INF", {}).get("CLASS_OBJ", [])
+        if isinstance(class_objs, dict):
+            class_objs = [class_objs]
+        print(f"  [DEBUG] CLASS_OBJ 次元リスト: {[o.get('@id') for o in class_objs]}")
+        # area次元があるか確認
+        area_obj = next((o for o in class_objs if o.get("@id") == "area"), None)
+        if area_obj:
+            classes = area_obj.get("CLASS", [])
+            if isinstance(classes, dict):
+                classes = [classes]
+            codes = [c.get("@code") for c in classes[:5]]
+            print(f"  [DEBUG] area次元コードサンプル: {codes}")
+            has_shiso = SHISO_AREA in {c.get("@code") for c in classes}
+            print(f"  [DEBUG] 宍粟市({SHISO_AREA})含む: {has_shiso}")
+        else:
+            print(f"  [DEBUG] area次元なし → 地域コードが別次元に格納されている可能性")
+        # VALUEの@areaを確認
+        all_values = stat_data_all.get("DATA_INF", {}).get("VALUE", [])
         if isinstance(all_values, dict):
             all_values = [all_values]
-        area_codes_found = sorted({v.get("@area", "") for v in all_values})[:20]
-        print(f"  [DEBUG] テーブル内 @area コードサンプル: {area_codes_found}")
-        # 宍粟市コードが含まれているか確認
-        has_shiso = SHISO_AREA in {v.get("@area", "") for v in all_values}
-        print(f"  [DEBUG] 宍粟市({SHISO_AREA})含む: {has_shiso}")
+        area_codes_found = sorted({v.get("@area", "") for v in all_values[:100]})[:10]
+        print(f"  [DEBUG] VALUE @area サンプル: {area_codes_found}")
 
     # まず宍粟市で試みる
     for area, level in [(SHISO_AREA, "city"), (HYOGO_PREF, "pref")]:
