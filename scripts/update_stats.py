@@ -67,10 +67,9 @@ SURVEY_SEARCHES = {
 def search_tables(search_word: str, limit: int = 50) -> list[dict]:
     """キーワードで統計表一覧を検索"""
     params = {
-        "appId":       APP_ID,
-        "searchWord":  search_word,
-        "limit":       limit,
-        "updatedDate": "2010",
+        "appId":      APP_ID,
+        "searchWord": search_word,
+        "limit":      limit,
     }
     try:
         resp = requests.get(f"{BASE_URL}/getStatsList", params=params, timeout=30)
@@ -194,11 +193,18 @@ def extract_value_by_keyword(values: list, keywords: list[str]) -> int | None:
 def print_table_ids(tables: list[dict]) -> None:
     """発見したテーブルIDをログ出力（デバッグ用）"""
     print(f"  発見テーブル数: {len(tables)}")
-    for t in tables[:5]:
-        tid   = t.get("@id", "—")
-        title = get_title_str(t)
-        sdate = t.get("SURVEY_DATE", "")
-        print(f"    ID={tid} | {sdate} | {title[:60]}")
+    city_tables = [t for t in tables if "市区町村" in t.get("STATISTICS_NAME", "") or "市区町村" in get_title_str(t)]
+    if city_tables:
+        print(f"  ★市区町村レベル候補: {len(city_tables)}件")
+        for t in city_tables[:5]:
+            print(f"    ID={t.get('@id','—')} | {t.get('SURVEY_DATE','')} | {get_title_str(t)[:70]}")
+    else:
+        print("  （市区町村レベルなし）先頭5件:")
+        for t in tables[:5]:
+            tid   = t.get("@id", "—")
+            title = get_title_str(t)
+            sdate = t.get("SURVEY_DATE", "")
+            print(f"    ID={tid} | {sdate} | {title[:70]}")
 
 
 # ────────────────────────────────────────────────
