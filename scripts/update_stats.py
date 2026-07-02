@@ -41,33 +41,34 @@ SURVEY_SEARCHES = {
         "searchWord": "市町村別集計",
         "statsCode":  "00400001",
         "city_kw":    "市町村",
-        "title_kw":   "小学校",
+        "title_kw":   ["小学校", "在学者"],   # リスト: 両方含むテーブルを選ぶ
         "label_kw":   ["在学者", "合計"],
     },
     "school_jh": {
         "searchWord": "市町村別集計",
         "statsCode":  "00400001",
         "city_kw":    "市町村",
-        "title_kw":   "中学校",
+        "title_kw":   ["中学校", "在学者"],   # リスト: 両方含むテーブルを選ぶ
         "label_kw":   ["在学者", "合計"],
     },
-    # 介護保険: statsCode なし + searchWord で検索（statsCode=00450396 は存在しないため）
+    # 介護保険: searchWord 1語のみ（複数語のAND検索が意図しない結果を返すため）
     "care": {
-        "searchWord": "介護保険 市区町村",
+        "searchWord": "介護保険",
         "city_kw":    "市区町村",
         "label_kw":   ["合計", "総数", "認定者", "要介護"],
     },
-    # 医療施設: statsCode なし + searchWord で検索（statsCode=00450011 は人口動態統計のため）
+    # 医療施設: 宍粟市に病院がない可能性があるため第２表（一般診療所）を優先
     "medical": {
         "searchWord": "医療施設 市区町村",
         "city_kw":    "市区町村",
-        "label_kw":   ["合計", "総数"],
+        "title_kw":   "一般診療所",
+        "label_kw":   ["一般診療所", "合計", "総数"],
     },
-    # 農林業センサス: statsCode は農山村地域調査も含む広い範囲のため searchWord を絞り込む
+    # 農林業センサス: 地方別テーブルが返るため近畿地方テーブルを狙う
     "agri": {
-        "searchWord": "農業経営体 市区町村",
+        "searchWord": "農業経営体 近畿",
         "statsCode":  "00500209",
-        "city_kw":    "市区町村",
+        "city_kw":    "近畿",
         "label_kw":   ["合計", "総数", "農業経営体"],
     },
 }
@@ -246,13 +247,21 @@ def find_best_table(tables: list[dict], city_kw: str, title_kw: str = None) -> d
         t for t in tables
         if city_kw in t.get("STATISTICS_NAME", "") or city_kw in get_title_str(t)
     ]
-    # title_kw でタイトルフィルタ（幼稚園/小学校/中学校などの種別絞り込みに使用）
+    # title_kw でタイトルフィルタ（str または list）
     if title_kw and city_tables:
-        title_filtered = [t for t in city_tables if title_kw in get_title_str(t)]
-        if title_filtered:
-            city_tables = title_filtered
+        kws = [title_kw] if isinstance(title_kw, str) else list(title_kw)
+        # 全キーワードが含まれるテーブルを優先
+        all_match = [t for t in city_tables if all(kw in get_title_str(t) for kw in kws)]
+        if all_match:
+            city_tables = all_match
         else:
-            print(f"  （title_kw='{title_kw}' に一致するテーブルなし、全市区町村テーブルを対象）")
+            # 一部でもマッチするものにフォールバック
+            any_match = [t for t in city_tables if any(kw in get_title_str(t) for kw in kws)]
+            if any_match:
+                city_tables = any_match
+                print(f"  （title_kw={kws} 部分一致で{len(any_match)}件）")
+            else:
+                print(f"  （title_kw={kws} に一致なし、全市区町村テーブルを対象）")
 
     if city_tables:
         best = max(city_tables, key=sort_key)
