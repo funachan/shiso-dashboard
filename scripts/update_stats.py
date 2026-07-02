@@ -11,11 +11,19 @@
   ※ ラベルはCLASS_INFを参照してコード→ラベル変換が必要。
 
 アプローチ:
-  1. searchWord でテーブル一覧を検索（短いキーワードでAND検索）
-  2. 最初に cdArea=28221 付きで検索（市区町村レベルのテーブルを優先）
+  1. searchWord でテーブル一覧を検索
+  2. cdArea=28221 付きで検索（市区町村レベル優先）
   3. 見つからない場合は cdArea なしで検索
-  4. getStatsData で CLASS_INF をパースし、宍粟市(28221)の値を正確に抽出
-  5. 宍粟市の値がない場合は兵庫県(28)でフォールバック
+  4. CLASS_INF をパースし宍粟市の値を抽出
+  5. 宍粟市の値がない場合は兵庫県でフォールバック
+
+【介護保険について】
+  e-Stat API では市区町村別の要介護認定者数テーブルが提供されていない。
+  カードを削除済み。
+
+【医療施設について】
+  第2表（一般診療所テーブル）は @area 次元がなく、cat02ラベルに市区町村名が格納。
+  数値コードでのラベル検索は他市コードに誤マッチするため、地名（"宍粟"）で検索。
 """
 
 import json
@@ -34,16 +42,14 @@ SHISO_AREA = "28221"   # 宍粟市
 HYOGO_PREF = "28"      # 兵庫県（フォールバック）
 BASE_URL   = "https://api.e-stat.go.jp/rest/3.0/app/json"
 
-# ラベル検索用の地名ヒント（cat02ラベルに市区町村コードが格納されるテーブル向け）
-# 市区町村コードの数字がラベルに別の意味で現れる場合があるため、
-# 地名で確実に特定する
+# cat02ラベル検索用の地名ヒント
+# ※ 市区町村コード数字がラベルに別の意味で現れる場合があるため地名で特定する
 AREA_NAME_HINTS = {
-    SHISO_AREA: "宍粟",  # 宍粟市
-    HYOGO_PREF: "兵庫",  # 兵庫県
+    SHISO_AREA: "宍粟",
+    HYOGO_PREF: "兵庫",
 }
 
 SURVEY_SEARCHES = {
-    # 学校基本調査: statsCode + searchWord="市町村別集計" で市区町村レベルテーブルを直接検索
     "school_el": {
         "searchWord": "市町村別集計 小学校",
         "statsCode":  "00400001",
@@ -58,20 +64,12 @@ SURVEY_SEARCHES = {
         "title_kw":   "生徒数",
         "label_kw":   ["計", "合計"],
     },
-    # 介護保険
-    "care": {
-        "searchWord": "要介護認定",
-        "city_kw":    "市区町村",
-        "label_kw":   ["合計", "総数", "認定者", "要介護"],
-    },
-    # 医療施設: 第２表（一般診療所）を優先
     "medical": {
         "searchWord": "医療施設 市区町村",
         "city_kw":    "市区町村",
         "title_kw":   "一般診療所",
         "label_kw":   ["一般診療所", "合計", "総数"],
     },
-    # 農林業センサス
     "agri": {
         "searchWord": "農業経営体 近畿",
         "statsCode":  "00500209",
@@ -105,7 +103,6 @@ def search_tables(search_word: str, limit: int = 30, cd_area: str = None,
     result = data.get("GET_STATS_LIST", {})
     if result.get("RESULT", {}).get("STATUS", -1) != 0:
         return []
-
     tables = result.get("DATALIST_INF", {}).get("TABLE_INF", [])
     return [tables] if isinstance(tables, dict) else tables
 
@@ -170,7 +167,8 @@ def extract_value(raw: dict, target_area: str, label_keywords: list[str]) -> tup
     area_codes = {k[1] for k, v in class_map.items() if k[0] == "area"}
     if area_codes:
         has_target = target_area in area_codes
-        print(f"    エリア次元: {len(area_codes)}件 | {target_area}({('宍粟市' if target_area==SHISO_AREA else '兵庫県')})含む: {has_target}")
+        name = "宍粟市" if target_area == SHISO_AREA else "兵庫県"
+        print(f"    エリア次元: {len(area_codes)}件 | {target_area}({name})含む: {has_target}")
 
     values = stat_data.get("DATA_INF", {}).get("VALUE", [])
     if isinstance(values, dict):
@@ -193,7 +191,6 @@ def extract_value(raw: dict, target_area: str, label_keywords: list[str]) -> tup
             code = v.get(f"@{dim}", "")
             if code:
                 cat_labels += class_map.get((dim, code), "")
-
         for kw in label_keywords:
             if kw in cat_labels or not cat_labels:
                 try:
@@ -236,12 +233,10 @@ def find_best_table(tables: list[dict], city_kw: str, title_kw: str = None) -> d
         best = max(city_tables, key=sort_key)
         print(f"  ★市区町村テーブル: {get_title_str(best)} [{best.get('@id')}]")
         return best
-
     if tables:
         best = max(tables, key=sort_key)
         print(f"  → フォールバック: {get_title_str(best)} [{best.get('@id')}]")
         return best
-
     return None
 
 
@@ -324,13 +319,11 @@ def fetch_school_data() -> dict:
         cfg = SURVEY_SEARCHES[key]
         print(f"\n[学校基本調査 {label}] 検索: {cfg['searchWord']}")
         val, t, level = fetch_with_fallback(cfg, cfg["searchWord"])
-
         year = str(t)[:4] if t else None
         if result["year"] is None and year:
             result["year"] = year
         if result["data_level"] == "" and level:
             result["data_level"] = level
-
         if label == "小学校":
             result["elementary"] = val
         else:
@@ -340,69 +333,27 @@ def fetch_school_data() -> dict:
     return result
 
 
-def fetch_care_data() -> dict:
-    """
-    介護保険事業状況報告から要介護・要支援認定者数を取得する。
-
-    e-Stat APIでの市区町村別認定者数の取得を複数キーワードで試みる。
-    いずれも失敗した場合は certified_total=None を返す（HTMLで"データなし"表示）。
-    """
-    result = {"year": None, "certified_total": None,
-              "source_name": "介護保険事業状況報告", "data_level": ""}
-
-    search_attempts = [
-        "介護保険 市区町村 認定者",
-        "介護保険事業 市区町村",
-        "要介護認定者数 市区町村",
-        "要介護認定",   # 従来キーワード
-    ]
-
-    for search_word in search_attempts:
-        print(f"\n[介護保険] 検索: {search_word}")
-        cfg_attempt = {
-            "searchWord": search_word,
-            "city_kw":    "市区町村",
-            "label_kw":   ["合計", "総数", "認定者", "要介護"],
-        }
-        val, t, level = fetch_with_fallback(cfg_attempt, search_word)
-        if val is not None:
-            result["year"]            = str(t)[:4] if t else None
-            result["certified_total"] = val
-            result["data_level"]      = level
-            print(f"  → 介護認定者 {result['year']}年: {val}人 [レベル:{level}]")
-            return result
-
-    print("  → 介護認定者: 全検索で未取得（e-Stat APIでの市区町村別提供なし）")
-    return result
-
-
 def fetch_medical_data() -> dict:
     """
-    医療施設調査から市内の診療所数・病院数を取得する。
+    医療施設調査から市内の診療所数を取得する。
 
-    【テーブル構造の注意】
-    このテーブルは @area 次元がなく、cat02 にラベル形式で市区町村情報が格納されている。
-    例: cat02 code='01020', label='01202 函館市'
-    ラベルの先頭数字は市区町村コード。
-
-    【マッチング方針】
-    数字コードでのラベル検索は他市のコードが混入する誤マッチが起きるため、
-    AREA_NAME_HINTS（地名文字列）でラベルを検索する。
-    例: SHISO_AREA → "宍粟" を含むラベルを探す
+    【構造の注意】
+    第2表は @area 次元がなく cat02 ラベルに市区町村名が格納されている。
+    例: code='01020', label='01202 函館市'
+    数値コードでのラベル検索は他市コードに誤マッチするため、
+    AREA_NAME_HINTS の地名（"宍粟"）でラベルを検索する。
     """
-    result = {"year": None, "hospitals": None, "clinics": None, "beds": None,
+    result = {"year": None, "clinics": None,
               "source_name": "医療施設調査", "data_level": ""}
 
     cfg = SURVEY_SEARCHES["medical"]
-    sc  = cfg.get("statsCode")
     print(f"\n[医療施設] 検索: {cfg['searchWord']}")
 
-    tables = search_tables(cfg["searchWord"], cd_area=SHISO_AREA, stats_code=sc)
+    tables = search_tables(cfg["searchWord"], cd_area=SHISO_AREA)
     time.sleep(1)
     if not tables:
-        tables = search_tables(cfg["searchWord"], stats_code=sc)
+        tables = search_tables(cfg["searchWord"])
         time.sleep(1)
-
     if not tables:
         return result
 
@@ -411,10 +362,8 @@ def fetch_medical_data() -> dict:
     if not table:
         return result
 
-    tid = table["@id"]
-
     # 全データ取得（area 指定なし）
-    raw_all = get_stats_data(tid, area=None)
+    raw_all = get_stats_data(table["@id"], area=None)
     time.sleep(1)
     if not raw_all:
         return result
@@ -425,7 +374,7 @@ def fetch_medical_data() -> dict:
     if isinstance(all_values, dict):
         all_values = [all_values]
 
-    # CLASS_INF の全次元を確認（デバッグ）
+    # デバッグ: CLASS_INF の各次元に宍粟ラベルが含まれるか確認
     class_objs = stat_data_all.get("CLASS_INF", {}).get("CLASS_OBJ", [])
     if isinstance(class_objs, dict):
         class_objs = [class_objs]
@@ -434,25 +383,22 @@ def fetch_medical_data() -> dict:
         classes = obj.get("CLASS", [])
         if isinstance(classes, dict):
             classes = [classes]
-        has_shiso_name = any("宍粟" in c.get("@name", "") for c in classes)
+        has_shiso = any("宍粟" in c.get("@name", "") for c in classes)
         sample = [(c.get("@code"), c.get("@name", "")) for c in classes[:3]]
-        print(f"  [DEBUG] {dim_id}: 宍粟ラベル含む={has_shiso_name} | サンプル={sample}")
+        print(f"  [DEBUG] {dim_id}: 宍粟ラベル含む={has_shiso} | サンプル={sample}")
 
     def find_area_values(target_area: str) -> tuple[list, str]:
         """
-        target_area に対応する VALUE リストと使用した次元名を返す。
-
-        検索優先順:
-          1. @area での直接マッチ
-          2. AREA_NAME_HINTS の地名でラベルを検索（cat02 → cat01 → cat03 の順）
+        target_area に対応する VALUE リストを返す。
+        優先順: @area 直接マッチ → AREA_NAME_HINTS 地名でラベル検索
         """
-        # 方法1: @area で直接フィルタ
+        # @area で直接フィルタ
         filtered = [v for v in all_values if v.get("@area") == target_area]
         if filtered:
             print(f"  → @area={target_area} で発見: {len(filtered)}件")
             return filtered, "area"
 
-        # 方法2: 地名ヒントでラベル検索
+        # 地名ヒントでラベル検索
         hint = AREA_NAME_HINTS.get(target_area, "")
         if not hint:
             return [], ""
@@ -500,22 +446,18 @@ def fetch_medical_data() -> dict:
 
             if val_int is None:
                 continue
-            if "病院" in cat_labels and result["hospitals"] is None:
-                result["hospitals"] = val_int
-            elif "一般診療所" in cat_labels and result["clinics"] is None:
+            if "一般診療所" in cat_labels and result["clinics"] is None:
                 result["clinics"] = val_int
-            elif "病床" in cat_labels and result["beds"] is None:
-                result["beds"] = val_int
 
-        print(f"  → 病院:{result['hospitals']} 診療所:{result['clinics']} 病床:{result['beds']} [レベル:{level_name}]")
-        if result["hospitals"] is not None or result["clinics"] is not None:
+        print(f"  → 診療所:{result['clinics']} [レベル:{level_name}]")
+        if result["clinics"] is not None:
             break
 
     return result
 
 
 def fetch_agri_data() -> dict:
-    result = {"year": None, "farm_households": None, "farmers": None,
+    result = {"year": None, "farm_households": None,
               "source_name": "農林業センサス", "data_level": ""}
 
     cfg = SURVEY_SEARCHES["agri"]
@@ -572,7 +514,7 @@ def generate_template() -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>宍粟市 統計ダッシュボード</title>
 <style>
-  :root { --navy:#1a3a6b; --sky:#2e86c1; --green:#27ae60; --orange:#e67e22; --purple:#8e44ad; --bg:#f5f7fa; }
+  :root { --navy:#1a3a6b; --sky:#2e86c1; --orange:#e67e22; --purple:#8e44ad; --bg:#f5f7fa; }
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:'Hiragino Sans','Meiryo',sans-serif; background:var(--bg); color:#333; }
   header { background:var(--navy); color:#fff; padding:24px 32px; }
@@ -604,7 +546,6 @@ def generate_template() -> str:
 </footer>
 <script>
 const SCHOOL_DATA  = {};
-const CARE_DATA    = {};
 const MEDICAL_DATA = {};
 const AGRI_DATA    = {};
 
@@ -621,12 +562,9 @@ const CARDS = [
   { label:"学校基本調査", color:"var(--sky)", title:"小中学校 児童生徒数",
     data: SCHOOL_DATA,
     rows: d => [["小学校", val(d.elementary,"人")],["中学校", val(d.junior_high,"人")]] },
-  { label:"介護保険事業状況報告", color:"var(--green)", title:"要介護・要支援認定者数",
-    data: CARE_DATA,
-    rows: d => [["認定者合計", val(d.certified_total,"人")]] },
   { label:"医療施設調査", color:"var(--orange)", title:"市内医療施設",
     data: MEDICAL_DATA,
-    rows: d => [["病院数", val(d.hospitals,"施設")],["診療所数", val(d.clinics,"施設")],["病床数", val(d.beds,"床")]] },
+    rows: d => [["診療所数", val(d.clinics,"施設")]] },
   { label:"農林業センサス", color:"var(--purple)", title:"農業経営体数",
     data: AGRI_DATA,
     rows: d => [["農業経営体数", val(d.farm_households,"経営体")]] },
@@ -653,20 +591,17 @@ def main():
     print("=" * 55)
 
     school  = fetch_school_data()
-    care    = fetch_care_data()
     medical = fetch_medical_data()
     agri    = fetch_agri_data()
 
     print("\n" + "=" * 55)
     print("【取得結果サマリー】")
     print(f"  学校 小学校: {school.get('elementary')}人 / 中学校: {school.get('junior_high')}人 ({school.get('year')}年) [{school.get('data_level')}]")
-    print(f"  介護 認定者: {care.get('certified_total')}人 ({care.get('year')}年) [{care.get('data_level')}]")
-    print(f"  医療 病院: {medical.get('hospitals')} 診療所: {medical.get('clinics')} ({medical.get('year')}年) [{medical.get('data_level')}]")
+    print(f"  医療 診療所: {medical.get('clinics')} ({medical.get('year')}年) [{medical.get('data_level')}]")
     print(f"  農業 経営体: {agri.get('farm_households')} ({agri.get('year')}年) [{agri.get('data_level')}]")
 
     html = load_html()
     html = inject_data(html, "SCHOOL_DATA",  school)
-    html = inject_data(html, "CARE_DATA",    care)
     html = inject_data(html, "MEDICAL_DATA", medical)
     html = inject_data(html, "AGRI_DATA",    agri)
     html = update_timestamp(html)
@@ -681,10 +616,9 @@ def main():
         with open(summary_file, "a", encoding="utf-8") as f:
             f.write("## 統計データ更新完了\n\n")
             f.write("| データ | 調査年 | 主要指標 | データ範囲 |\n|---|---|---|---|\n")
-            lvl = lambda d: "宍粟市" if d.get("data_level")=="city" else ("兵庫県" if d.get("data_level")=="pref" else "—")
+            lvl = lambda d: "宍粟市" if d.get("data_level") == "city" else ("兵庫県" if d.get("data_level") == "pref" else "—")
             f.write(f"| 学校基本調査 | {school.get('year','—')} | 小{school.get('elementary','—')}人 / 中{school.get('junior_high','—')}人 | {lvl(school)} |\n")
-            f.write(f"| 介護保険 | {care.get('year','—')} | 認定者{care.get('certified_total','—')}人 | {lvl(care)} |\n")
-            f.write(f"| 医療施設 | {medical.get('year','—')} | 病院{medical.get('hospitals','—')}・診療所{medical.get('clinics','—')} | {lvl(medical)} |\n")
+            f.write(f"| 医療施設(診療所) | {medical.get('year','—')} | 診療所{medical.get('clinics','—')} | {lvl(medical)} |\n")
             f.write(f"| 農林業 | {agri.get('year','—')} | 農業経営体{agri.get('farm_households','—')} | {lvl(agri)} |\n")
 
 
