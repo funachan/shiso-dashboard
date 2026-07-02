@@ -1,0 +1,42 @@
+name: 宍粟市 統計データ自動更新
+
+on:
+  # 毎年10月1日 09:00 JST (= 00:00 UTC) に実行
+  # 学校基本調査・介護保険・医療施設 は例年9〜10月にデータ公開
+  schedule:
+    - cron: "0 0 1 10 *"
+
+  # 手動実行も可能
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 依存パッケージをインストール
+        run: pip install requests
+
+      - name: 統計データを取得して HTML を更新
+        env:
+          ESTAT_APP_ID: ${{ secrets.ESTAT_APP_ID }}
+        run: python scripts/update_stats.py
+
+      - name: 変更があればコミット & プッシュ
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: 統計ダッシュボード自動更新 (e-Stat)"
+          file_pattern: "shiso_stats_dashboard.html"
