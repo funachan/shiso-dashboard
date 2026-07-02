@@ -37,11 +37,14 @@ SURVEY_CODES = {
 # e-Stat API ヘルパー
 # ────────────────────────────────────────────────
 def get_stats_list(stats_code: str, limit: int = 20) -> list[dict]:
-    """調査コードで統計表一覧を取得（新しい順）"""
+    """調査コードで統計表一覧を取得（新しい順）
+    ※テーブル一覧はエリア絞り込みなしで検索する。
+      cdArea 絞り込みをすると市区町村データが indexing されていない
+      調査でテーブルが見つからないため。
+    """
     params = {
         "appId":     APP_ID,
         "statsCode": stats_code,
-        "cdArea":    SHISO_AREA,
         "limit":     limit,
         "updatedDate": "2010",   # 2010年以降
     }
