@@ -35,28 +35,37 @@ HYOGO_PREF = "28"      # 兵庫県（フォールバック）
 BASE_URL   = "https://api.e-stat.go.jp/rest/3.0/app/json"
 
 SURVEY_SEARCHES = {
+    # 学校基本調査: statsCode + searchWord="市町村別集計" で市区町村レベルテーブルを直接検索
     "school_el": {
-        "searchWord": "学校基本調査 小学校",
-        "city_kw":    "市区町村",
-        "label_kw":   ["合計", "在学者"],
+        "searchWord": "市町村別集計",
+        "statsCode":  "00400001",
+        "city_kw":    "市町村",
+        "label_kw":   ["小学校", "在学者", "合計"],
     },
     "school_jh": {
-        "searchWord": "学校基本調査 中学校",
-        "city_kw":    "市区町村",
-        "label_kw":   ["合計", "在学者"],
+        "searchWord": "市町村別集計",
+        "statsCode":  "00400001",
+        "city_kw":    "市町村",
+        "label_kw":   ["中学校", "在学者", "合計"],
     },
+    # 介護保険: statsCode で直接検索
     "care": {
-        "searchWord": "要介護認定",
+        "searchWord": "市区町村",
+        "statsCode":  "00450396",   # 介護保険事業状況報告
         "city_kw":    "市区町村",
-        "label_kw":   ["合計", "総数"],
+        "label_kw":   ["合計", "総数", "認定者"],
     },
+    # 医療施設: statsCode で直接検索
     "medical": {
-        "searchWord": "医療施設調査",
+        "searchWord": "市区町村",
+        "statsCode":  "00450011",   # 医療施設調査
         "city_kw":    "市区町村",
         "label_kw":   ["合計", "総数"],
     },
+    # 農林業センサス: statsCode で直接検索
     "agri": {
-        "searchWord": "農林業センサス",
+        "searchWord": "市区町村",
+        "statsCode":  "00500209",   # 農林業センサス
         "city_kw":    "市区町村",
         "label_kw":   ["合計", "総数", "農業経営体"],
     },
@@ -66,18 +75,22 @@ SURVEY_SEARCHES = {
 # ────────────────────────────────────────────────
 # e-Stat API ヘルパー
 # ────────────────────────────────────────────────
-def search_tables(search_word: str, limit: int = 30, cd_area: str = None) -> list[dict]:
-    """キーワードで統計表一覧を検索。cd_area 指定で地域フィルタ。"""
+def search_tables(search_word: str, limit: int = 30, cd_area: str = None,
+                  stats_code: str = None) -> list[dict]:
+    """キーワードで統計表一覧を検索。stats_code で調査を絞込み、cd_area で地域フィルタ。"""
     params = {
         "appId":      APP_ID,
-        "searchWord": search_word,
         "limit":      limit,
     }
+    if search_word:
+        params["searchWord"] = search_word
+    if stats_code:
+        params["statsCode"] = stats_code
     if cd_area:
         params["cdArea"] = cd_area
 
     try:
-        resp = requests.get(f"{BASE_URL}/getStatsList", params=params, timeout=30)
+        resp = requests.get(f"{BASE_URL}/getStatsList", params=params, timeout=45)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
@@ -279,8 +292,10 @@ def fetch_with_fallback(cfg: dict, search_kw: str) -> tuple[int | None, str | No
     3. 宍粟市レベルで取得、失敗したら兵庫県レベルで取得
     Returns: (value, time_period, data_level)
     """
+    sc = cfg.get("statsCode")
+
     # Phase 1: 宍粟市コード付きでテーブル検索
-    tables = search_tables(search_kw, cd_area=SHISO_AREA)
+    tables = search_tables(search_kw, cd_area=SHISO_AREA, stats_code=sc)
     time.sleep(1)
     source_level = "city"
 
@@ -294,7 +309,7 @@ def fetch_with_fallback(cfg: dict, search_kw: str) -> tuple[int | None, str | No
                 return val, t, source_level
 
     # Phase 2: cdArea なしでテーブル検索
-    tables = search_tables(search_kw)
+    tables = search_tables(search_kw, stats_code=sc)
     time.sleep(1)
     if not tables:
         print("  テーブルなし")
@@ -367,13 +382,14 @@ def fetch_medical_data() -> dict:
               "source_name": "医療施設調査", "data_level": ""}
 
     cfg = SURVEY_SEARCHES["medical"]
+    sc  = cfg.get("statsCode")
     print(f"\n[医療施設] 検索: {cfg['searchWord']}")
 
     # 施設数と病床数は別テーブルの可能性があるため、最初に見つかったテーブルから取得
-    tables = search_tables(cfg["searchWord"], cd_area=SHISO_AREA)
+    tables = search_tables(cfg["searchWord"], cd_area=SHISO_AREA, stats_code=sc)
     time.sleep(1)
     if not tables:
-        tables = search_tables(cfg["searchWord"])
+        tables = search_tables(cfg["searchWord"], stats_code=sc)
         time.sleep(1)
 
     if not tables:
