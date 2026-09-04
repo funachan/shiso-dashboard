@@ -31,6 +31,8 @@
   .kpi-card.ichimiya { border-color: #27ae60; }
   .kpi-card.haga { border-color: #8e44ad; }
   .kpi-card.chigusa { border-color: #e74c3c; }
+  .kpi-card.census { border-color: #2a6496; background: #f2f7fc; }
+  .kpi-note { font-size: 0.75rem; color: #666; line-height: 1.7; margin: -8px 0 20px; }
   .kpi-label { font-size: 0.72rem; color: #666; margin-bottom: 4px; }
   .kpi-value { font-size: 1.7rem; font-weight: 700; color: #1a2a3a; }
   .kpi-value span { font-size: 0.9rem; }
@@ -92,13 +94,18 @@
     <h1>🏙 宍粟市 人口推移ダッシュボード</h1>
     <div class="subtitle">住民基本台帳データに基づく人口分析</div>
   </div>
-  <div class="updated">基準日：令和8年5月31日<br>データ期間：平成23年4月〜令和8年5月</div>
+  <div class="updated">基準日：令和8年8月31日<br>データ期間：平成23年4月〜令和8年8月</div>
 </header>
 
 <div class="container">
 
   <!-- KPI Cards -->
   <div class="kpi-grid" id="kpiGrid"></div>
+  <p class="kpi-note">
+    ※ 町別の人口は<strong>住民基本台帳</strong>（月末時点・住民登録ベース）、いちばん右のカードは<strong>国勢調査</strong>（5年ごと・10月1日時点の常住人口ベース）です。
+    調査の基準が異なるため、両者の数値は一致しません。<br>
+    ※ 国勢調査の数値は<strong>速報値</strong>です。出典：兵庫県「令和7年国勢調査速報結果（県独自集計）」（2026年5月22日公表）
+  </p>
 
   <!-- Charts Row 1: Trend (full width) -->
   <div class="chart-grid">
@@ -131,12 +138,12 @@
   <!-- Charts Row 2: Aging + Town share -->
   <div class="chart-grid">
     <div class="chart-card">
-      <div class="chart-title">👴 町別 高齢化率・年少人口比率（令和8年5月）</div>
+      <div class="chart-title">👴 町別 高齢化率・年少人口比率（令和8年8月）</div>
       <canvas id="agingChart" height="200"></canvas>
       <p class="note">全国平均（2024年）：65歳以上 約29.3%　0〜14歳 約11.4%</p>
     </div>
     <div class="chart-card">
-      <div class="chart-title">🏘 町別 人口構成比（令和8年5月）</div>
+      <div class="chart-title">🏘 町別 人口構成比（令和8年8月）</div>
       <canvas id="pieChart" height="200"></canvas>
     </div>
   </div>
@@ -369,10 +376,20 @@ const MONTHLY_DATA = [
   { date:"2026-03", total:32721, yamazaki:20917, ichimiya:6705, haga:2839, chigusa:2260 },
   { date:"2026-04", total:32656, yamazaki:20887, ichimiya:6687, haga:2829, chigusa:2253 },
   { date:"2026-05", total:32613, yamazaki:20869, ichimiya:6676, haga:2819, chigusa:2249 },
+  { date:"2026-06", total:32560, yamazaki:20853, ichimiya:6651, haga:2812, chigusa:2244 },
+  { date:"2026-07", total:32519, yamazaki:20822, ichimiya:6650, haga:2803, chigusa:2244 },
+  { date:"2026-08", total:32474, yamazaki:20790, ichimiya:6650, haga:2797, chigusa:2237 },
 ];
 
 // 高齢化・年齢構成データ（5歳階級Excelから。最新月分を更新）
 const AGE_DATA = {
+  "2026-08": {
+    yamazaki: { total:20790, aged65:7373, young014:2179 },
+    ichimiya: { total:6650,  aged65:2921, young014:532  },
+    haga:     { total:2797,  aged65:1332, young014:171  },
+    chigusa:  { total:2237,  aged65:1142, young014:144  },
+    total:    { total:32474, aged65:12768,young014:3026 },
+  },
   "2026-05": {
     yamazaki: { total:20869, aged65:7368, young014:2218 },
     ichimiya: { total:6676,  aged65:2923, young014:536  },
@@ -380,6 +397,22 @@ const AGE_DATA = {
     chigusa:  { total:2249,  aged65:1144, young014:151  },
     total:    { total:32613, aged65:12754,young014:3083  },
   }
+};
+
+// ============================================================
+//  国勢調査データ（5年ごと）
+//  出典：兵庫県「令和7年国勢調査速報結果（県独自集計・要計表による速報値）」2026年5月22日公表
+//  ※確報値が公表されたら数値を差し替えてください
+// ============================================================
+const CENSUS_DATA = {
+  year:        "令和7年",
+  population:  31269,
+  male:        14928,
+  female:      16341,
+  households:  12500,
+  prevYear:    "令和2年",
+  prevPop:     34819,
+  prevHouseholds: 12882,
 };
 
 // 人口動態データ（出典：厚生労働省 人口動態調査 e-Stat statsDataId:0003411564 宍粟市(28221)）
@@ -414,7 +447,7 @@ function fmtDate(d) {
 function fmtNum(n) { return n ? n.toLocaleString() : "-"; }
 function diff(a, b) {
   const d = a - b;
-  return (d >= 0 ? "▲" : "▼") + Math.abs(d).toLocaleString();
+  return (d === 0 ? "±" : d > 0 ? "▲" : "▼") + Math.abs(d).toLocaleString();
 }
 
 const sorted = [...MONTHLY_DATA].sort((a,b) => a.date.localeCompare(b.date));
@@ -447,6 +480,20 @@ function buildKPI() {
         ${yearDiff !== null ? `<div class="kpi-change ${yearDiff<0?'down':'up'}">前年同月比 ${diff(val,yval)}</div>` : ""}
       </div>`;
   });
+
+  // 国勢調査カード
+  const c = CENSUS_DATA;
+  const popDiff = c.population - c.prevPop;
+  const popRate = (popDiff / c.prevPop * 100).toFixed(1);
+  const hhDiff  = c.households - c.prevHouseholds;
+  const hhRate  = (hhDiff / c.prevHouseholds * 100).toFixed(1);
+  grid.innerHTML += `
+    <div class="kpi-card census">
+      <div class="kpi-label">国勢調査 人口（${c.year}・速報）</div>
+      <div class="kpi-value">${fmtNum(c.population)}<span> 人</span></div>
+      <div class="kpi-change ${popDiff<0?'down':'up'}">前回（${c.prevYear}）比 ${popDiff>0?'+':''}${fmtNum(popDiff)}人（${popRate}%）</div>
+      <div class="kpi-change ${hhDiff<0?'down':'up'}">世帯 ${fmtNum(c.households)}（${hhDiff>0?'+':''}${fmtNum(hhDiff)}・${hhRate}%）</div>
+    </div>`;
 }
 
 // ---- Trend Chart ----
