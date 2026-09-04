@@ -2,7 +2,7 @@ name: 人口データ自動更新
 
 on:
   # 毎月5日の午前10時（JST）に自動実行
-  # ※宍粟市HPは月初に前月データを公開するため5日に設定
+  # ※宍粟市HPは月初に前月末データを公開するため5日に設定
   schedule:
     - cron: '0 1 5 * *'   # UTC 01:00 = JST 10:00
 
@@ -22,19 +22,16 @@ jobs:
       - name: Python セットアップ
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: 依存パッケージをインストール
-        run: pip install requests beautifulsoup4
+        run: pip install requests beautifulsoup4 openpyxl
 
-      - name: データ更新スクリプトを実行
-        env:
-          ESTAT_APP_ID: ${{ secrets.ESTAT_APP_ID }}
+      - name: 市HPから人口データを取得して HTML を更新
         run: python scripts/update_population.py
 
-      - name: 変更をコミット・プッシュ
+      - name: 変更があればコミット & プッシュ
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: '自動更新: 人口データ更新'
-          commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
-          file_pattern: 'shiso_population_dashboard.html'
+          commit_message: 'chore: 人口ダッシュボード自動更新（住民基本台帳）'
+          file_pattern: 'shiso_dashboard.html'
