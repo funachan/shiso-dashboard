@@ -94,7 +94,7 @@
     <h1>🏙 宍粟市 人口推移ダッシュボード</h1>
     <div class="subtitle">住民基本台帳データに基づく人口分析</div>
   </div>
-  <div class="updated">基準日：令和8年8月31日<br>データ期間：平成23年4月〜令和8年8月</div>
+  <div class="updated">基準日：令和8年9月30日<br>データ期間：平成23年4月〜令和8年9月</div>
 </header>
 
 <div class="container">
@@ -138,12 +138,12 @@
   <!-- Charts Row 2: Aging + Town share -->
   <div class="chart-grid">
     <div class="chart-card">
-      <div class="chart-title">👴 町別 高齢化率・年少人口比率（令和8年8月）</div>
+      <div class="chart-title">👴 町別 高齢化率・年少人口比率（令和8年9月）</div>
       <canvas id="agingChart" height="200"></canvas>
       <p class="note">全国平均（2024年）：65歳以上 約29.3%　0〜14歳 約11.4%</p>
     </div>
     <div class="chart-card">
-      <div class="chart-title">🏘 町別 人口構成比（令和8年8月）</div>
+      <div class="chart-title">🏘 町別 人口構成比（令和8年9月）</div>
       <canvas id="pieChart" height="200"></canvas>
     </div>
   </div>
@@ -379,10 +379,18 @@ const MONTHLY_DATA = [
   { date:"2026-06", total:32560, yamazaki:20853, ichimiya:6651, haga:2812, chigusa:2244 },
   { date:"2026-07", total:32519, yamazaki:20822, ichimiya:6650, haga:2803, chigusa:2244 },
   { date:"2026-08", total:32474, yamazaki:20790, ichimiya:6650, haga:2797, chigusa:2237 },
+  { date:"2026-09", total:32440, yamazaki:20759, ichimiya:6639, haga:2807, chigusa:2235 },
 ];
 
 // 高齢化・年齢構成データ（5歳階級Excelから。最新月分を更新）
 const AGE_DATA = {
+  "2026-09": {
+    yamazaki: { total:20759, aged65:7371, young014:2164 },
+    ichimiya: { total:6639, aged65:2921, young014:525 },
+    haga:     { total:2807, aged65:1333, young014:170 },
+    chigusa:  { total:2235, aged65:1143, young014:142 },
+    total:    { total:32440, aged65:12768, young014:3001 },
+  },
   "2026-08": {
     yamazaki: { total:20790, aged65:7373, young014:2179 },
     ichimiya: { total:6650,  aged65:2921, young014:532  },
